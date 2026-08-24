@@ -9,6 +9,8 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。算法/系统工程师,在百�
 - **本机 SSH 经 relay proxy 审计连接开发机**:开发机 = `chenlonglong01@10.206.192.139`(主机名 wxtky02-p800-8nic-vd-node41.wxtky02.baidu.com,有 3×P800 OAM XPU,跑很多容器)。
 - `~/.ssh/config` 已配 `Host devbox → ProxyCommand relay-cli proxy %h %p %r`。这个 devbox 以后我记作 `node41/m300/pytorch`；`ssh devbox` 免密直接执行远端命令(已验证连通)。
 - 常用容器:ghs_qwen35/luodan12_p800_tle/NODE41_IPIPE/chenlonglong01_dev/chenlonglong01_m300_py312_torch212 等。
+- `chenlonglong01_m300_py312_torch212` 是这台机器上专门做 PyTorch 相关工作的容器。
+- `m300_tf212_cuda12_chenlonglong01_20260706_162019` 是专门给 TensorFlow 做的容器。
 
 ## 远端代码库项目
 - `cuda-rt-hook`(PyPI 包名 `cuda_mock`):C++/Python 库,通过修改 PLT 拦截 CUDA/XPU Runtime 接口(cudaMalloc/xpu_malloc 等),用于堆栈追踪、耗时统计、精度调试;位于 `~/cuda-rt-hook`。注意:它在**宿主机 /home/users/chenlonglong01**,容器 /workspace 里看不到(未挂载)。
