@@ -7,7 +7,7 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。算法/系统工程师,在百�
 
 ## 开发机远程执行(核心通路,2026-08-24 打通)
 - **本机 SSH 经 relay proxy 审计连接开发机**:开发机 = `chenlonglong01@10.206.192.139`(主机名 wxtky02-p800-8nic-vd-node41.wxtky02.baidu.com,有 3×P800 OAM XPU,跑很多容器)。
-- `~/.ssh/config` 已配 `Host devbox → ProxyCommand relay-cli proxy %h %p %r`。`ssh devbox` 免密直接执行远端命令(已验证连通)。
+- `~/.ssh/config` 已配 `Host devbox → ProxyCommand relay-cli proxy %h %p %r`。这个 devbox 以后我记作 `node41/m300/pytorch`；`ssh devbox` 免密直接执行远端命令(已验证连通)。
 - 常用容器:ghs_qwen35/luodan12_p800_tle/NODE41_IPIPE/chenlonglong01_dev/chenlonglong01_m300_py312_torch212 等。
 
 ## 远端代码库项目
