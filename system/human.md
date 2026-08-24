@@ -14,6 +14,7 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。算法/系统工程师,在百�
 
 ## 远端代码库项目
 - `cuda-rt-hook`(PyPI 包名 `cuda_mock`):C++/Python 库,通过修改 PLT 拦截 CUDA/XPU Runtime 接口(cudaMalloc/xpu_malloc 等),用于堆栈追踪、耗时统计、精度调试;位于 `~/cuda-rt-hook`。注意:它在**宿主机 /home/users/chenlonglong01**,容器 /workspace 里看不到(未挂载)。
+- PyTorch 相关源码库: `ssh://git@dev.kunlunxin.com:30004/klx/XTrainer/xTorch.git`。这个任务先记着,明天再开始。
 
 ## 开发机上的 codex/ducx AI agent(2026-08-24 探测)
 - **宿主机 agent**:`~/.baidu-cx/baidu-cx-linux-amd64-10.147.0.3/bin/codex`(ducx 定制版,连 oneapi-comate 网关 gpt-5.5)。命令:`export PATH=$HOME/.baidu-cx/.../bin:$PATH; codex exec "任务" --skip-git-repo-check`。
