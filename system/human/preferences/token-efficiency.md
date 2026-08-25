@@ -10,4 +10,6 @@ description: User's preference on token efficiency: act decisively, don't over-e
 
 行为规则:用户要改 agent 名字时,**直接说"请在输入框敲 /rename <新名>"**,这是唯一正解;不要改 JSON、不要搜源码、不要调 API。遇到用户抱怨"好麻烦/浪费 token",立刻停止探索,给出一步到位的指令。
 
+- 容器里的任务优先委派给容器中的 agent;我只看结果,再用另一个容器 agent 复核结果,不自己重复下场。
+
 记忆占用认知(2026-08-24 自查,向用户报告过):记忆块真正占上下文的大约只有 **~30KB**(persona 10.9KB + human 12.2KB + onboarding 4.6KB + 两个偏好文件 1.7KB),磁盘上 1.2MB 大头是 git 历史。用户已完全 onboarded,`onboarding.md`(4.6KB)实例上是冗余的、可删以省上下文。用户问"记忆占比/容量"这类自查时,直接按上述数字分层给(物理占用 vs 真占上下文的记忆块),并主动指出可删的冗余块。
