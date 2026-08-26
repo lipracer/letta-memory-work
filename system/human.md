@@ -53,6 +53,7 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 ## 本机 Letta 工作习惯(与生活 agent 通用知识)
 - 记忆同步用 harness 内建 `/memory-repository`,本 agent remote 是 `letta-memory-work.git`。push/pull 由 harness 自动管理。
 - backend 数据目录为 `~/.letta/lc-local-backend` 真实目录。用户偏好中文交流。
+- 当前默认工作区是 `/Users/chenlonglong01/workspace/zhixing-work`；后续与该会话相关的工作默认以这个目录为准。
 - 工作/生活两个 agent 的配置不要混用；模型可以分别配置，connect/通道也按 agent 或项目分开管理，不默认共享同一套。
 - 当前模型不支持读图(2026-08-24 实测:GLM-5.2/DeepSeek-V4-Flash 都不支持)。读 PDF/图片改走文本提取:`pip3 install --user pypdf` 后用脚本提取。文本提取对数据密集型报告反而更准。
 - letta 升级流程:见生活 agent 或 `~/.local/bin/verify-letta` 验证工具(post-commit hook 自动 push)。
