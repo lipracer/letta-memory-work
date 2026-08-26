@@ -37,3 +37,7 @@ Source: `/workspace/m300/perf_sim_result/hw_spec.md`
 - Data types: u32/i32, fp32, fp16, u16/i16, u64/i64, fp64, bfp16, fp8(e4m3/e5m2), fp6(e3m2/e2m3), fp4(e2m1), e8m0
 - i8/u8 storage with int32 computation conversion
 - Atomic instructions based on global memory/shared memory
+
+
+## Torch feature docs
+- `torch_feature/` 这组文档（含 `feature.md`、`parts/` 等）是用户此前委托远端 Claude 整理、后来由用户自己在本地完成整理的版本；后续以用户本地整理稿为准。
