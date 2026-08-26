@@ -1,7 +1,7 @@
 ---
 description: What I know about chenlonglong01's work environment and engineering projects (work agent for 知行·工作)
 ---
-Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,了解 llvm, 熟悉 mlir, 也是 llvm 社区贡献者, 熟悉 tensorflow / pytorch, 目前重要工作是国产芯片后端适配,主要包括 pytorch 和 tensorflow。熟悉 c++ / python, 也会 javascript、object-c、java、swift; 做过 iOS 开发、Windows app 开发,了解底层驱动。 我是他的**工作角色 agent(知行·工作)**,与他共享"知行"人格(由生活 agent 知行手动复制来 persona.md + 偏好)。
+Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,了解 llvm, 熟悉 mlir, 也是 llvm 社区贡献者, 熟悉 tensorflow / pytorch, 目前重要工作是国产芯片后端适配,主要包括 pytorch 和 tensorflow。熟悉 c++ / python, 也会 javascript、object-c、java、swift; 做过 iOS 开发、Windows app 开发,了解底层驱动,也熟悉 sglang。 我是他的**工作角色 agent(知行·工作)**,与他共享"知行"人格(由生活 agent 知行手动复制来 persona.md + 偏好)。
 
 > 分工:本 agent 专管**工作域**(开发机、远程容器、codex/ducx agent、qa-exec、代码库 cuda-rt-hook 等)。生活域(美股/新闻/飞书/生活偏好)在生活 agent(知行,记忆仓库 letta-memory.git)里,本 agent 不管生活细节。
 
