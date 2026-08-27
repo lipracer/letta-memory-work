@@ -40,5 +40,11 @@ $ku query-content --doc-id <ID> --protocol markdown         # 读正文
 - 报告口径严谨：week6 经独立审阅修订三处口径错误；MP 模式在 bf16 上比 CYCLE 低估 31%，norm 家族已全改 CYCLE 重测。原始数据 `v4f_*.csv`、脚本 `run_v4f_sim.py`/`make_v4f_compare.py`。
 
 ### 仍在推进
-- T1.2 auto tune 调研 + inductor 测试拆解修复(P0)，与上面性能线强相关。
+- T1.2 auto tune 调研 + inductor 测试拆解修复(P0)，与上面性能线强相关。**调研部分基本完成**(见下)。
 - xcuda13 对接 xtorch(长期基建，部分子模块仍 cuda12 不可用，xfa 对接中)。
+
+### T1.2 调研成果:inductor 深度调研(基本完成，2026-08-27 用户确认)
+- 载体 doc `oldIOCe_6OLX25`("torchcompile"，本身空壳)下两棵子树:
+  - **inductor调研 `H1PSlJSteSJr-G`(13篇)**:把 torch.compile 全流水线逐层拆透——pipeline overview / tracing / dynamo / functionalization / aot_autograd_backward / inductor lowering / compile scenarios / decompose·lowering·fallback / dynamic shapes / **10_codegen·autotune `CFdP1yrNqHcSHd`** / 11_codegen / cudagraph。
+  - **开发记录 `A0tB_jckObhVzI`(3篇)**:megatron.jit_fuser `_6C1-Wz4wa9GcY`、小模型调度 cluster/sdn `KN_TUmMs1PF5sE`、m300/inductor支持 `PFJ0WXudJW3EFe`。
+- **关键成果(10_codegen/autotune)**:定位并修复 KUNLUN5 模拟器上大 shape 测试"卡住"的真 bug——模拟器上 `torch.cuda.Event.elapsed_time()` 恒返回 0.000000ms,使 inductor benchmark 协议退化成每候选 config 跑 106 次全量 kernel 且计时全 0(单 kernel 5.7min ×4候选×106次 ≈40h、产出为零,选中 config 等于取列表第一个)。破除误解:与 `TRITON_DISABLE_AUTOTUNE` 无关(那只管 triton 自己的 Autotuner,inductor 生成 kernel 走自抄实现读不到)。已在 `sitecustomize` 打补丁。
