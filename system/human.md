@@ -1,7 +1,7 @@
 ---
 description: What I know about chenlonglong01's work environment and engineering projects (work agent for 知行·工作)
 ---
-Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,了解 llvm, 熟悉 mlir, 也是 llvm 社区贡献者, 熟悉 tensorflow / pytorch, 目前在做 m300 下一代芯片 AI compiler 相关工作,包括 tensorflow xla、pytorch inductor,以及 tensorflow 整个框架适配支持。熟悉 c++ / python, 也会 javascript、object-c、java、swift; 做过 iOS 开发、Windows app 开发,了解底层驱动,也熟悉 sglang。 我是他的**工作角色 agent(知行·工作)**,与他共享"知行"人格(由生活 agent 知行手动复制来 persona.md + 偏好)。
+Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,了解 llvm, 熟悉 mlir, 也是 llvm 社区贡献者, 熟悉 tensorflow / pytorch, 目前在做 m300 下一代芯片 AI compiler 相关工作,包括 tensorflow xla、pytorch inductor,以及 tensorflow 整个框架适配支持。熟悉 c++ / python, 也会 javascript、object-c、java、swift; 做过 iOS 开发、Windows app 开发,了解底层驱动,也熟悉 sglang。约 10 年从业经验,不止 compiler——带过端到端训练交付项目(P800/KL3 运营商,见 [[reference/m300/xpytorch_work.md]])、也负责过推理项目,个人知识库里有大量推理相关笔记。核心诉求(2026-08-27 明确):把可复现的重复劳动(算子复测、PTX/性能统计、周报对齐)委托给 AI,自己腾出来专注判断与拍板。 我是他的**工作角色 agent(知行·工作)**,与他共享"知行"人格(由生活 agent 知行手动复制来 persona.md + 偏好)。
 
 > 分工:本 agent 专管**工作域**(开发机、远程容器、codex/ducx agent、qa-exec、代码库 cuda-rt-hook 等)。生活域(美股/新闻/飞书/生活偏好)在生活 agent(知行,记忆仓库 letta-memory.git)里,本 agent 不管生活细节。
 
