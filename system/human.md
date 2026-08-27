@@ -50,6 +50,15 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 ## 大任务派发策略(2026-08-24 与用户约定)
 - 用户问过"大任务要不要拆/超长文档怎么传给 agent"。已答并记住:先读再派,但只读最小量;环境背景(容器/代码位置/flag)由我消化编进 prompt,agent 的领域代码让它自己读。超长文档三种传法(推荐排序):①放到 agent 可见路径(`/workspace`)让它自己读,最省 token;②我读+摘要转述成干净 prompt;③分段硬塞给 prompt(不推荐,易断上下文)。涉及容器内 agent 时最优 = docker cp 文档进 /workspace + `dev-agent "读 /workspace/xxx,然后执行 X"`。
 
+## GPU 机器与测试环境
+- 美研 GPU 机器：ALCHEMY（172.19.53.18，A100/3090/A10/A30）、THANOS（172.19.53.5，8×A100 SXM）、ATOM（172.19.53.2，A100/A10/A30）、THOR（172.19.53.15，H100）。使用前需在 5794977 群锁卡，避免从国内大量拷数据。
+- THOR 的现有自动化通路已验证；ALCHEMY/THANOS/ATOM 的登录链路仍需实际验证。ATOM 在出现 no kex algorithm 时，记录的备用方式是先登录 THANOS 再跳转。
+- GPU 测试流程适合封装成按需 skill，但具体测试命令、环境初始化和各机器容器入口尚未统一确认；不要在这些信息未确认时假定所有机器登录方式相同。
+
+## 本机 Codex
+- 本机已安装 OpenAI Codex CLI（曾验证版本 `codex-cli 0.149.1`），可用 `codex` 交互模式和 `codex exec` 非交互模式；`codex app` 是其桌面入口命令。
+- 上次检查时本机没有 Codex credentials，也未发现已安装的 `Codex.app`；回答 Codex 使用方式时应先检查当前状态，不要把历史检查结果当成现状。
+
 ## 本机 Letta 工作习惯(与生活 agent 通用知识)
 - 记忆同步用 harness 内建 `/memory-repository`,本 agent remote 是 `letta-memory-work.git`。push/pull 由 harness 自动管理。
 - backend 数据目录为 `~/.letta/lc-local-backend` 真实目录。用户偏好中文交流。
