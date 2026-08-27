@@ -7,6 +7,20 @@ description: chenlonglong01(@陈龙龙) 在 XPyTorch/M300 知识库中负责的�
 - 知识库根：`https://ku.baidu-int.com/knowledge/HFVrC7hq1Q/BeQck0ZK7s/AI4AMs73rr`
 - repo-id = `AI4AMs73rr`，space=HFVrC7hq1Q，group=BeQck0ZK7s(XPyTorch)
 
+## 用户带过的训练交付项目:P800/KL3 电信运营商模型支持(doc `PbEn1-DpqF_3a1`，2024年，用户主写、后被人移动)
+KL3 第一个外部训练客户,用户负责端到端交付+复盘。这是他"带过训练项目"的硬证据,面试/履历可用。
+- **覆盖模型(一人一模型端到端)**:resnet50、yolox/yolov5、bert-large、ChatGLM-6B、qwen7B/14B、SD2.1、GPT-NeoX-20B、llama2-7B/13B/70B。含单卡→8卡→多机(llama70B 4机调试)。
+- **目标**:精度对齐 A100/竞对、性能达 GPU 90%。
+- **他踩过并解决的真实坑(可作面试"过来人"弹药)**:
+  - 8卡 chatglm-6b 增 layer 后某算子规模越界溢出,定位+修复各花一周;
+  - yolox 单卡 OK、多卡因 dataloader 多进程加载导致 loss 跟 GPU 对不齐,定位一周;
+  - SD xpu 与 gpu 随机数生成不一致→多卡 loss 跳变;
+  - 性能优化:FA 融合、FA lod tensor 去 h2d/d2h、FA_GEMM 走 fp16 / accu 保 fp32、xblas 默认 fp32→fp16、xblas handle 单例减少 xpu_wait(57→22)、swiglu 查表、rms_layernorm、caching allocator 接管 xdnn 内存;
+  - bertlarge 卡 pytorch1.12 用不了 FA,dropout 算子极慢;
+  - 分布式/megatron 最新优化策略反复验证、共享卡随机问题、坏卡定位。
+- **他的管理/复盘视角**:想把模型支持沉淀成流水线(模型负责人 dump 算子列表→算子组按列表优化),但没推下去导致主分支频繁 break;工时复盘显示精度对齐(15%→71%→79%)和算子开发(44%)是大头,根因是硬件资源缺、基础软件不稳、缺 QA 看护。→ 说明他不只写 kernel,带过团队、做过交付复盘、懂工程管理短板。
+- 子文档:运营商复盘 `c58b3193ac0848`、模型调优方法总结 `iunHNp2IkduziO`、模型支持FAQ `h6G_2gDw15SQON`、最终交付 `ApvgDFQP1ZUL2u`、个人模型进度更新 `aiI3auy86An4V9`、模型数据统计 `2gvJTqiHIRlylc`。
+
 ## 我(用户)署名负责的任务（来自 m300/Task 任务表 doc `cdOJVhODJXh9vg`）
 - **T1.2 (PyTorch-1, P0)**：auto tune 调研 + inductor 相关测试拆解与修复。产出=auto tune 测试拆解清单 + 归因/修复。依赖 T1。
 - **T4 (PyTorch-2/3, P0)**：推理算子——全部初步跑通 + 常用规模 + 精度严格对齐 + 性能分析。产出=推理算子通过率报告 + 性能报告。
