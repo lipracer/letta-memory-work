@@ -13,4 +13,4 @@ description: User's preference on token efficiency: act decisively, don't over-e
 - 容器里的任务优先委派给容器中的 agent;我只看结果,再用另一个容器 agent 复核结果,不自己重复下场。
 - 当用户要求把事情迁到容器/远端继续时,先把当前要做的事情写进记忆并同步到远端,再开始新的执行链路。
 
-记忆占用认知(2026-08-24 自查,向用户报告过):记忆块真正占上下文的大约只有 **~30KB**(persona 10.9KB + human 12.2KB + onboarding 4.6KB + 两个偏好文件 1.7KB),磁盘上 1.2MB 大头是 git 历史。用户已完全 onboarded,`onboarding.md`(4.6KB)实例上是冗余的、可删以省上下文。用户问"记忆占比/容量"这类自查时,直接按上述数字分层给(物理占用 vs 真占上下文的记忆块),并主动指出可删的冗余块。
+记忆占用认知(2026-08-27 实测复核):每轮必定注入上下文的核心记忆主体是 `system/` 下文件——`human.md` ~9.7KB(9,696字节) + `persona.md` ~12.5KB(12,540字节) ≈ 22KB,加 4 个偏好文件后约 ~30KB。磁盘上大头是 git 历史,不占上下文。`onboarding.md` 早已删除(用户已完全 onboarded),不要再提它。`reference/`、`skills/` 等非 system 文件不每轮注入,只在文件树里露路径,任务相关时才 Read。用户问"记忆占比/容量/上限"这类自查时,分层回答:物理磁盘占用 vs 真正每轮注入的核心记忆块(~30KB) vs 上下文窗口上限(当前 agent 128K token、单次回复 32K),不要把三者混为一谈。

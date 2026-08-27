@@ -66,3 +66,5 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 - 工作/生活两个 agent 的配置不要混用；模型可以分别配置，connect/通道也按 agent 或项目分开管理，不默认共享同一套。
 - 当前模型不支持读图(2026-08-24 实测:GLM-5.2/DeepSeek-V4-Flash 都不支持)。读 PDF/图片改走文本提取:`pip3 install --user pypdf` 后用脚本提取。文本提取对数据密集型报告反而更准。
 - letta 升级流程:见生活 agent 或 `~/.local/bin/verify-letta` 验证工具(post-commit hook 自动 push)。
+- 存在兄弟工作 agent **xpytorch-team**(id `agent-local-5ac1c143-...`,workspace `/Users/chenlonglong01/workspace/xpytorch-team`,模型 `GLM-5.3-Flash`),专做 XPyTorch 团队相关。它和本 agent 各自独立、记忆不共享;用户可能让我隔空探它状态(用 messaging-agents 发消息做健康检查)或帮忙排查。
+- **安全终止卡死的 letta CLI 进程**(2026-08-27 教训):本机常同时跑多个 `node .../letta` CLI 进程(本 agent、生活 agent、xpytorch-team 等)。用户说"某个会话窗口卡死、杀了它"时,**绝不能盲目 kill**——先 `ps` 列出所有 letta 进程,用**每个进程的 cwd**(如 `lsof -p <pid> -d cwd` 或 ps 的工作目录)区分是哪条会话,认准目标再动手;尤其要先定位并保护本 agent 自己那条会话的 pid(杀错会中断当前对话)。流程:先 `kill`(TERM)让其优雅退出,卡到不理信号再 `kill -9`。agent 记忆/会话在服务端,杀终端进程不丢数据,重开 `letta` + `/resume` 即可恢复。

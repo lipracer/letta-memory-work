@@ -30,3 +30,9 @@ $ku query-recent-doc --action recent-edit --page-size 20   # 我最近编辑的�
 $ku query-repo-dir --repo-id AI4AMs73rr --depth 1           # 库目录树
 $ku query-content --doc-id <ID> --protocol markdown         # 读正文
 ```
+
+## 重点方向与关键路径(2026-08-27 与用户梳理)
+用户 P0 任务是一条链:**T1.2(auto tune 认知) → T4.3(常用规模复测) → T4.4(GPU 基线) → T4.5(拍板优化路径)**。
+- **T4.3 常用规模复测 = 当前最紧堵点**:现 124/126 通过率建立在"非常见规模"上,须按常用规模重算,否则挡住 T4.4/T4.5。T4.1 参考文档=M300 推理 P99 Triton 算子统计、glm 5.2 vllm 算子清单(在知识库)。
+- **T4.5 / T8.5 优化路径未决**:两处同一岔路——inductor tune 改 torch 配置 vs 调 hw layout 逻辑。需用户拍板,建议等 T4.4 实测差距出来再定。
+- T1.2 auto tune 与 T4 强相关,可并道走。xcuda13 对接 xtorch 是长期基建项(部分子模块仍 cuda12 不可用,xfa 对接中)。
