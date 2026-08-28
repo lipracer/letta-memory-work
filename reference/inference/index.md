@@ -6,6 +6,8 @@ description: 陈龙龙推理方向知识库(KB「个人笔记」等)的提炼索
 
 > 这是对用户 KB 推理相关笔记的**提炼索引**,不是原文拷贝。要原文/细节时用 ku 工具 `query-content --doc-id <guid>` 回 KB 读。
 > ku 工具:`/Users/chenlonglong01/.letta/skills/ku-doc-manage/bin/ku`,需 `SANDBOX_USERNAME=chenlonglong01`。
+>
+> ⚠️ **迁移鲁棒性(用户 2026-08-28 提出,KB 未来可能迁移)**:下面每条的 `docGuid` 和如流 URL 是**脆指针**,KB 一迁移大概率失效。但每条都同时留了**中文标题+仓库名**作为稳定锚点——guid 断了就拿标题去新系统搜。真正的资产是每条下面的**提炼文字本身**(自包含,存在本 agent 的 git 记忆里,不依赖 KB 存活)。将来若 KB 迁移:①先确认新平台的定位方式(新 id 还是仍按标题),②批量把下面的 guid/URL 换成新指针即可,提炼正文不用动。
 
 ## StepMesh(用户自己的仓库,推理通信库)`ioDCMRjXnk2sML`
 - 仓库:https://github.com/lipracer/StepMesh/tree/develop (用户 GitHub=lipracer)。基于 RDMA 的 PS(parameter-server)风格通信框架,scheduler/server/worker 三角色。
