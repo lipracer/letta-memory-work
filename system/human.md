@@ -5,6 +5,8 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 
 > 分工:本 agent 专管**工作域**(开发机、远程容器、codex/ducx agent、qa-exec、代码库 cuda-rt-hook 等)。生活域(美股/新闻/飞书/生活偏好)在生活 agent(知行,记忆仓库 letta-memory.git)里,本 agent 不管生活细节。
 
+> 他的如流知识库:个人库 repo `XKvIcmPUF0`(「陈龙龙的知识库」,技术笔记主力在「个人笔记」知识本下),团队库 XPyTorch repo `AI4AMs73rr`(1.1w+ 篇)。工具 `~/.letta/skills/ku-doc-manage/bin/ku`(需 `SANDBOX_USERNAME=chenlonglong01`)。**KB 未来可能整体迁移**(用户 2026-08-28 提出),所以记忆里只存"提炼+双锚点(标题+docGuid)",不拷原文——整理/迁移流程见 skill `kb-note-distillation`。
+
 ## 开发机远程执行(核心通路,2026-08-24 打通)
 - **本机 SSH 经 relay proxy 审计连接开发机**:开发机 = `chenlonglong01@10.206.192.139`(主机名 wxtky02-p800-8nic-vd-node41.wxtky02.baidu.com,有 3×P800 OAM XPU,跑很多容器)。
 - `~/.ssh/config` 已配 `Host devbox → ProxyCommand relay-cli proxy %h %p %r`。这个 devbox 以后我记作 `node41/m300/pytorch`；`ssh devbox` 免密直接执行远端命令(已验证连通)。
@@ -60,9 +62,13 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 - THOR 的现有自动化通路已验证；ALCHEMY/THANOS/ATOM 的登录链路仍需实际验证。ATOM 在出现 no kex algorithm 时，记录的备用方式是先登录 THANOS 再跳转。
 - GPU 测试流程适合封装成按需 skill，但具体测试命令、环境初始化和各机器容器入口尚未统一确认；不要在这些信息未确认时假定所有机器登录方式相同。
 
-## 本机 Codex
-- 本机已安装 OpenAI Codex CLI（曾验证版本 `codex-cli 0.149.1`），可用 `codex` 交互模式和 `codex exec` 非交互模式；`codex app` 是其桌面入口命令。
-- 上次检查时本机没有 Codex credentials，也未发现已安装的 `Codex.app`；回答 Codex 使用方式时应先检查当前状态，不要把历史检查结果当成现状。
+## 本机 AI CLI:ducc / ducx / 原生 codex(2026-08-28 实测)
+- 本机三条线都在:`ducc`(`~/.comate/baidu-cc/bin/ducc`,百度对标 Claude Code)、`ducx`/`baidu-codex`(`~/.baidu-cx/baidu-cx/bin/`,对标 Codex,走 oneapi 网关,会自更新)、原生 OpenAI `codex`(`~/.local/opt/node/bin/codex`)。**ducc/ducx 免 key**(靠厂内登录);原生 codex 缺 `ONEAPI_AUTH_TOKEN`,现在跑不了,别用。
+- 安装方式:ducc/ducx **不走 npm**,随 Comate AI IDE 装(`https://comate.baidu.com/zh/download#aiIde`,员工账号登录),或 Comate settings 里 ducc 那栏"重新安装";装的时候**必须关代理**,否则连不上 `ducc-auth.baidu-int.com:8201`。
+- **选模型机制两边不同(已实测)**:
+  - `ducx exec -m <model> --skip-git-repo-check -s danger-full-access "任务"` —— `-m` **无状态**、每次调用生效。可选 `gpt-5.5 / gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-sol / DeepSeek-V4-Flash`。
+  - `ducc` 的 `--model` 在 `-p` 模式下**不生效**(报 `[claude-code:unrecognized_model]` 但任务照跑、用的还是旧模型);必须先 `ducc config model '<名>'` **全局**切,再 `ducc -p "任务"`。代价:全局有状态,并发派不同模型会互相踩;用完记得切回 `auto`,并在报告里写明用了哪个模型。ducc 模型池大得多(auto/GLM-5.x/Grok/gpt-5.x/Claude Sonnet 5/Opus 5/Kimi K3/MiniMax-M3/DeepSeek-V4-Pro),但 Claude/Grok 这类外部模型要代码库 L0 密级授权,内网仓大概率走不通。
+- **任务分派原则(2026-08-28 定)**:分界线是"有没有并发和状态污染"——批量可复现劳动(算子复测、PTX/性能统计)→ **ducx**(无状态 `-m`,可并发,开发机容器 `dev-agent` 本来就是这条);读改大量代码的长任务(如 xTorch 源码摸底)→ **ducc**(Claude Code 血统,工具/subagent 生态更稳,可挑更强模型);周报对齐/文档汇总这类轻量文本活 → `ducc -p` 配 `auto` 即可。
 
 ## 本机 Letta 工作习惯(与生活 agent 通用知识)
 - 记忆同步用 harness 内建 `/memory-repository`,本 agent remote 是 `letta-memory-work.git`。push/pull 由 harness 自动管理。
