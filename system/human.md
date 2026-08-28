@@ -12,6 +12,11 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 - `chenlonglong01_m300_py312_torch212` 是这台机器上专门做 PyTorch 相关工作的容器。
 - `m300_tf212_cuda12_chenlonglong01_20260706_162019` 是专门给 TensorFlow 做的容器。
 
+## codex 接 oneapi 网关(2026-08-28 查证)
+- 开发机 `~/.codex/config.toml` 只有 provider 段:`[model_providers.oneapi]` name=oneapi / `base_url="https://oneapi-comate.baidu-int.com/v1"` / `env_key="ONEAPI_AUTH_TOKEN"` / `wire_api="responses"`。**缺顶层 `model` + `model_provider="oneapi"`,且 ONEAPI_AUTH_TOKEN 未写进任何 rc**,即只定义未启用。token 在 `https://oneapi-comate.baidu-int.com/mine` 领(每月 1500 额度)。
+- KB 里 `codex使用技巧`(`PQWWTAGaGsu0fL`)是空壳。可参考同类:`comate连接服务器使用说明 YEanljyRmEZ-iA`、`Ducc使用说明 CMZnRdLpiznoht`(自定义 gateway 走 ~/.claude/settings.json + `ducc --disable-model-proxy`)、`内网容器用 claude-code Ipdvyp6YZcABPp`(千帆 anthropic 端点包装脚本)。
+- 容器内 ducx/baidu-codex **不需要 key**(靠厂内登录;`/root/.baidu-cc/user.json` 只存 ANTHROPIC_*_MODEL 等 env,无 token)。
+
 ## 远端代码库项目
 - `cuda-rt-hook`(PyPI 包名 `cuda_mock`):C++/Python 库,通过修改 PLT 拦截 CUDA/XPU Runtime 接口(cudaMalloc/xpu_malloc 等),用于堆栈追踪、耗时统计、精度调试;位于 `~/cuda-rt-hook`。注意:它在**宿主机 /home/users/chenlonglong01**,容器 /workspace 里看不到(未挂载)。
 - PyTorch 相关源码库: `ssh://git@dev.kunlunxin.com:30004/klx/XTrainer/xTorch.git`。这个任务先记着,明天再开始。
