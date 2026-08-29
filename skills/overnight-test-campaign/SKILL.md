@@ -1,7 +1,7 @@
 ---
 name: overnight-test-campaign
 description: This skill should be used when the user wants to run a large batch of tests overnight (半夜/夜间跑) on remote GPU/XPU machines by delegating to agents — including environment and disk precheck, pulling images and building containers, sharding test suites that have no unified runner, and collecting an auditable report by morning. First campaign is the M300 PyTorch Autotuning (torch.compile) suite. Load this before scheduling any unattended remote test run.
-version: 0.1.0
+version: 0.1.1
 ---
 
 # 夜间远端测试战役(overnight test campaign)
@@ -19,12 +19,18 @@ error,第二天没有任何可用信息,白烧一晚机器。
 | 阶段 | 做什么 | 门禁 |
 |---|---|---|
 | **P0 选机 & 体检** | 登录、看盘、看卡、确认镜像可拉 | 目标机有足够空间和空闲卡 |
+| **P0.5 通链路试点** | 拿**已有容器**派 2 个 subagent 跑一个最简用例(如 torch add) | 委托链路本身跑通 + 双份 handback |
 | **P1 打通单例** | 建容器 → **跑环境初始化(配网盘+ssh key)** → 冒烟 → **手动跑通一个最小用例** | 拿到真实 pass/fail + 单例耗时 |
 | **P2 定分片** | 用 P1 的耗时反推分片粒度和总时长 | 分片方案落成文件 |
 | **P3 夜间铺开** | `letta cron` 触发,agent 按 runbook 执行 | 早上有报告可读 |
 
 P1 是整套东西的价值所在:**没有真实耗时就无法定分片**,没跑过一次就不知道环境缺什么。
 P1 一定要人在场。
+
+**P0.5 不许跳。** 它验的不是测试,而是**委托链路本身**:subagent 能不能起来、
+命令能不能落进容器、handback 格式能不能被填对。用已有容器 + 最简用例做,成本极低,
+2026-08-29 试点就是靠它抓出 `conda activate` 缺失(否则夜间 200+ 用例会整片
+`ModuleNotFoundError`)。派两个 agent 到隔离子目录、互不参照,顺带拿到交叉复核。
 
 ## 执行模型:本机 subagent 下发,不依赖容器内 agent
 
@@ -311,6 +317,13 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
 - **别指望容器内 agent** —— 容器里起不了 ducx/baidu-codex。二进制**确实存在**于
   `/root/.comate/.baidu-cx/*/bin/` 但不在 PATH(2026-08-29 实测 `which` rc=1),
   **不要因为文件在那儿就去启动它**。执行主体是本机 subagent,经 `ssh` + `docker exec` 下发。
+- **subagent 派发失败 ≠ 任务失败** —— 症状:`exited with code null`、0 次工具调用、1~2 秒就结束。
+  这是**进程创建阶段**就没起来,不是它在远端出错。2026-08-29 同时并发派两个长 prompt 时复现过一次。
+  处理:把 prompt 收短(尤其去掉大段 markdown 代码块模板,改成一行字段清单),重试一次;
+  同一格式不要反复硬试。模板类内容放进 runbook 文件让它自己读,prompt 只留指路。
+- **交付要摊开给用户看** —— handback 写进磁盘不等于交付。回复里要把
+  ip / hostname / 容器名 / 工作目录 / 命令数 / pass-fail / 日志 md5 做成一张对照表贴出来,
+  文件路径只是补充。2026-08-29 有过"报告早就在盘上、但用户等于没拿到"的先例。
 - **确认命令真的落在容器里** —— 2026-08-25 有过本地 subagent 被误当成容器 agent、结果作废的先例。
   用 `docker exec <容器> hostname` 之类的自证命令确认落点。
 - **不要内联长脚本** —— here-doc / 引号转义反复炸(`zsh: parse error`)。
