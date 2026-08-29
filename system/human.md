@@ -26,14 +26,8 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 ## 开发机上的 codex/ducx AI agent(2026-08-24 探测)
 - **宿主机 agent**:`~/.baidu-cx/baidu-cx-linux-amd64-10.147.0.3/bin/codex`(ducx 定制版,连 oneapi-comate 网关 gpt-5.5)。命令:`export PATH=$HOME/.baidu-cx/.../bin:$PATH; codex exec "任务" --skip-git-repo-check`。
 - **注意**:远端 `/usr/bin/codex` 是百度 pb 数据处理工具(Codex 3.0 atlas2/flume),**不是 AI agent**,勿混淆。
-- **容器内 agent(已定位并验证成功,2026-08-24)**:在你的专属容器 **`chenlonglong01_m300_py312_torch212`**(HOME=/root)里,agent 装在 **`/root/.comate/.baidu-cx/baidu-cx-linux-amd64-10.147.0.3/bin/`** 下的 **`ducx` 和 `baidu-codex`**(命令名不是 `codex`,故 `which codex` 找不到)。驱动命令(实测返回 CONTAINER_AGENT_OK):
-  ```bash
-  docker exec chenlonglong01_m300_py312_torch212 bash -lc 'export PATH=/root/.comate/.baidu-cx/baidu-cx-linux-amd64-10.147.0.3/bin:$PATH; ducx exec "任务" --skip-git-repo-check'
-  ```
-  workdir=/workspace,连 oneapi-comate 网关模型 gpt-5.5。`/root/.baidu-cc/user.json` 存用户凭据。
-- **容器内 agent 沙箱限制(2026-08-24 验证)**:默认 `--sandbox read-only` 在容器里**起不来**(缺 bubblewrap,报"本地命令执行被环境挂载限制拦住",读不了文件)。**必须加 `-s danger-full-access`** 才能让 agent 真正读文件干活(容器本身已是隔离沙箱)。已验证:`ducx exec "任务" --skip-git-repo-check -s danger-full-access` 能读到 /workspace 下 migration.md 并产出分析。容器内 /workspace 是 agent 工作目录(有 m300/jit_fuser_migate/torchcompile 等),**看不到宿主机 /home/users**。
-  - 另:e2e 确认容器 ducx **不支持 `--security-model`**,sandbox 走 `-s/--sandbox`(选项 read-only/workspace-write/danger-full-access),也支持 `-c 'sandbox_permissions=["disk-full-read-access"]'` 等 config override。
-- **一键驱动工具 `dev-agent`(2026-08-24 已封装并验证跑通)**:`~/.local/bin/dev-agent "任务"` 封装整套链路:`ssh devbox(relay 审计)` → `docker exec chenlonglong01_m300_py312_torch212` → `ducx exec -s danger-full-access "任务"`。我在本机跑 `dev-agent "任务"` 即可驱动容器内 agent 列目录/读文件/分析。下次直接用,不必手写 docker exec 长路径。
+- **容器内 agent 已作废(2026-08-29 用户确认 + 双 subagent 实测)**:容器 `chenlonglong01_m300_py312_torch212` 里**起不了 ducx/baidu-codex**。二进制确实存在于 `/root/.comate/.baidu-cx/*/bin/`,但**不在 PATH**(`which ducx baidu-codex codex` rc=1)——**不要因为文件在那儿就去启动它**。2026-08-24 记的"已验证成功 CONTAINER_AGENT_OK"和沙箱 flag 已作废,历史细节见 [[ARCHIVE.md]]。
+- **现行唯一通路:本机 Letta subagent + `ssh <节点>` + `docker exec <容器>`**,容器只是被操作对象,不是执行者。因此 `~/.local/bin/dev-agent`(ssh devbox → docker exec → `ducx exec`)也**不可用**,不要再派它。
 
 ## 远程 QA 机器
 - QA 机器自动化已打通(2026-08-20):脚本 `~/.local/bin/qa-exec "命令"` 可远程在 qa_work@172.19.53.15(主机名 thor,有 H100 GPU)执行命令。原理:`script` 伪PTY 跑 relay-cli(复用当天指纹)→ 跳板机 → ssh qa(密码 isa1234)→ 执行。前提:当天用户手动跑过一次 relay-cli 解锁指纹。relay 服务端禁 exec 通道和端口转发,此 PTY 方案是唯一通路。
@@ -55,13 +49,15 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 - 百度定制 codex 客户端(ducx/baidu-cx)是**瘦客户端**——配置里只有 oneapi 推理网关(`oneapi-comate.baidu-int.com` 或 `ai-chat.host:8602`),真正执行在百度服务端沙箱内,本机**看不到也枚举不到**它背后用了哪些机器(`remote_control_enrollments`/`agent_jobs` 表均空)。驱动它干活:非交互用 `codex exec "任务" --skip-git-repo-check`,或用 `codex mcp-server`(stdio MCP 端点)。macOS 无 `timeout` 命令。若用户要"本机对话、远端机器干活"且机器指定,应走 relay-cli proxy 那条 SSH 通路(见上文)把命令发到那台装了 codex 的机器,而不是依赖 ducx 客户端。
 
 ## 大任务派发策略(2026-08-24 与用户约定)
-- 用户问过"大任务要不要拆/超长文档怎么传给 agent"。已答并记住:先读再派,但只读最小量;环境背景(容器/代码位置/flag)由我消化编进 prompt,agent 的领域代码让它自己读。超长文档三种传法(推荐排序):①放到 agent 可见路径(`/workspace`)让它自己读,最省 token;②我读+摘要转述成干净 prompt;③分段硬塞给 prompt(不推荐,易断上下文)。涉及容器内 agent 时最优 = docker cp 文档进 /workspace + `dev-agent "读 /workspace/xxx,然后执行 X"`。
+- 用户问过"大任务要不要拆/超长文档怎么传给 agent"。已答并记住:先读再派,但只读最小量;环境背景(容器/代码位置/flag)由我消化编进 prompt,agent 的领域代码让它自己读。超长文档三种传法(推荐排序):①放到 agent 可见路径(`/workspace`)让它自己读,最省 token;②我读+摘要转述成干净 prompt;③分段硬塞给 prompt(不推荐,易断上下文)。涉及容器内工作时最优 = 把文档送进容器 `/workspace`(`docker cp` 或 base64 落盘),再派**本机 subagent** 经 `ssh` + `docker exec` 去读它干活(容器内 agent 已作废,见上)。
 
 ## 夜间远端测试战役(2026-08-28 起沉淀为可复用流程)
 用户要做 M300 PyTorch **autotune**(torch.compile,6 个子特性 ~228 用例)的夜间批量测试:委托 agent 登录环境 → 体检磁盘 → 拉镜像建容器 → 搭环境 → 调度分片跑测试。**该套测试没有统一 runner,必须由 agent 统一调度分配。** 用户明确要求(2026-08-28):**先不跑,先把工作流定义清楚、沉淀成可复用流程**;并认同"先跑通一个例子,后面就好办"。
-流程已固化为技能 `overnight-test-campaign`(四阶段硬门禁:P0 选机体检 → P1 打通单例(人在场)→ P2 定分片 → P3 夜间铺开),机器/镜像/初始化事实在其 `machines.md`,subagent 手册模板在 `RUNBOOK-template.md`。**做这类任务先加载该技能,不要凭记忆复述细节。**
-两个决定性事实:①M300 官方镜像默认跑**功能模拟器**(`XPU_SIMULATOR_MODE=1`),不需要真卡不用锁卡,瓶颈是 CPU/内存,耗时不能拿 GPU 经验外推;②容器建好后**必须**跑 KU《常用命令》`iLP-gei3L_-MnK` 的环境初始化脚本(装 bcecmd → 从 BOS 拉 boot/ → `restore.sh`)才会有网盘和用户 ssh key,否则 clone 内网仓库直接失败。该文档正文有明文长期凭据(BOS AK/SK、GitHub token、机器密码)——现场读取,不落盘不进 prompt;已建议用户轮换。
+流程已固化为技能 `overnight-test-campaign`(四阶段硬门禁:P0 选机体检 → P1 打通单例(人在场)→ P2 定分片 → P3 夜间铺开),机器/镜像/环境事实在其 `machines.md`,subagent 手册模板 `RUNBOOK-template.md`,回传格式 `HANDBACK-schema.md`。**做这类任务先加载该技能,不要凭记忆复述细节。**
+用户在 2026-08-29 追加的四条硬约束(细节在技能里):①**执行主体是本机 subagent**,连接/体检/建目录/起容器/冒烟每个环节都委托出去,不在主上下文逐条 ssh;②**每个 subagent 必须回传结构化 handback**(机器 ip、状态、工作目录、容器名、进容器后逐条命令原文+rc、结果计数、远端日志路径+行数+md5),完整测试日志留远端,**没有 handback 视为没干活**;③**写权限边界**:宿主机除 `docker pull/run/exec` 和建自己工作目录外禁止任何写,容器内只许写 `/workspace`,`/klxlake` 和其他用户目录禁写("盘满就顺手清"绝对不许,换机器);④**技能里不许写死用户名**,路径用 `$(id -un)`。
+四条决定性环境事实(展开与命令见技能 `machines.md`,别凭记忆复述):①官方镜像默认跑**功能模拟器**,不用真卡不用锁卡,瓶颈是 CPU/内存,那堆 `XPUSIM_*`/`CUDA_AMODEL_*` **开箱可用一个都别改**;②**M300 软件栈兼容 CUDA,一律按 CUDA 写法用**(`torch.cuda.is_available()`/`device="cuda"`/`TestCommonCUDA`)——实测 `torch.xpu.is_available()`=False,用它当门禁会让用例全部误 skip(假绿比报红危险),好处是上游 CUDA 测试可原样复用;③进容器**每条命令**都要先 activate 统一环境 `python312_torch212`(`docker exec bash -lc` 每条是全新 shell,activate 不跨命令);④容器建好后须跑 KU`iLP-gei3L_-MnK` 的环境初始化(BOS→`restore.sh` 配网盘+ssh key)才能 clone 内网仓库,**必须在任何 clone 之前**跑掉;该文档正文有明文长期凭据(BOS AK/SK、GitHub token、密码)——现场读取,不落盘不进 prompt,已建议用户轮换。宿主机工作目录 `/ssd<N>/$(id -un)`(N 按各机最空盘选)→ 容器内统一 `/workspace`。
 镜像权威出处:KU《M300软件产出镜像用户手册》`w_NznaMuJTnLdD`,当前 v2 `iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12:20260714_27`。
+2026-08-29 机制试点已通:两个本机 subagent 各进容器跑最简 torch add,3 passed × 2,交叉复核一致 —— `本机 → ssh devbox → docker exec → pytest` 这条链路是验证过的。下一步 P1 用 `test_multi_kernel.py`(14 用例)取分片基线;注意 feature 文档里到处引用的 `count_tests.py` **实际不存在**(AUDIT 标为复现性缺陷),228 这个用例数要重新取证。
 
 ## GPU 机器与测试环境
 - 美研 GPU 机器：ALCHEMY（172.19.53.18，A100/3090/A10/A30）、THANOS（172.19.53.5，8×A100 SXM）、ATOM（172.19.53.2，A100/A10/A30）、THOR（172.19.53.15，H100）。使用前需在 5794977 群锁卡，避免从国内大量拷数据。
