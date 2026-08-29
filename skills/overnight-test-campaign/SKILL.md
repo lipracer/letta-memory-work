@@ -19,7 +19,7 @@ error,第二天没有任何可用信息,白烧一晚机器。
 | 阶段 | 做什么 | 门禁 |
 |---|---|---|
 | **P0 选机 & 体检** | 登录、看盘、看卡、确认镜像可拉 | 目标机有足够空间和空闲卡 |
-| **P1 打通单例** | 搭好容器,**手动跑通一个最小用例** | 拿到真实 pass/fail + 单例耗时 |
+| **P1 打通单例** | 建容器 → **跑环境初始化(配网盘+ssh key)** → 冒烟 → **手动跑通一个最小用例** | 拿到真实 pass/fail + 单例耗时 |
 | **P2 定分片** | 用 P1 的耗时反推分片粒度和总时长 | 分片方案落成文件 |
 | **P3 夜间铺开** | `letta cron` 触发,agent 按 runbook 执行 | 早上有报告可读 |
 
@@ -69,19 +69,29 @@ docker pull <registry>/<image>:<tag>          # 先拉,失败得早比失败得�
 (`--ipc=host --pid=host --net=host`,不需要 `--device`/`--privileged`),
 建议只额外加 `--shm-size=64g` 和一个 `-v <产物目录>:/output`。
 
-### 3. 冒烟自检
-先用镜像文档给的官方单例确认容器本身没问题(见 `machines.md` 末尾),
+### 3. 跑环境初始化(必做,顺序不能错)
+容器起来是"裸"的 —— 没有网盘、没有用户的 ssh key,**clone 内网 git 仓库会直接失败**。
+先跑 KU《常用命令》`iLP-gei3L_-MnK` 开头的「环境初始化」脚本
+(装 `bcecmd` → 从 BOS 拉 `boot/` → `bash restore.sh`,配好网盘和 ssh key)。
+完整骨架和注意事项见 `machines.md`。
+
+**位置:建容器之后、冒烟自检之前。** 放错顺序会在 clone 阶段卡住,而且是半夜卡住。
+
+凭据在那份 KU 文档正文里明文写着 —— **现场读取,不落盘、不进 prompt、不进日志**。
+
+### 4. 冒烟自检
+先用镜像文档给的官方单例确认容器本身没问题(见 `machines.md`),
 **再**去跑目标测试。这一步能把"环境坏了"和"测试本身失败"区分开,省掉大量误判。
 
 模拟器模式记得先 `export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE`,否则日志被模拟器输出淹掉。
 
-### 4. 挑最小用例
+### 5. 挑最小用例
 挑选原则:**用例数最少、依赖最少、不需要特殊硬件档位的那个子特性**。
 autotune 场景推荐 `test_multi_kernel.py`(14 个用例,H2 即可,不需要 CUTLASS SM90+/Blackwell)。
 
 不要一开始就挑 `test_max_autotune.py`(125 个用例、10 个测试类、还带 `SKIP_TESTS` 列表)。
 
-### 5. 真的跑一次
+### 6. 真的跑一次
 
 ```bash
 cd <repo>/test/inductor    # xTorch 在容器内 /workspace/m300/torch_feature/xTorch
@@ -152,6 +162,10 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
 
 ## 常见坑
 
+- **新容器没跑初始化就 clone** —— 没有 ssh key,`ssh://git@icode.baidu.com:8235/...` 直接失败。
+  先跑 P1 第 3 步。
+- **凭据不落盘** —— 初始化用的 BOS AK/SK 在 KU 文档明文里,现场读、用完不写进任何文件、
+  不进日志、不进 subagent 的 prompt。
 - **容器内 ducx 必须 `-s danger-full-access`** —— 默认 `read-only` 在容器里起不来(缺 bubblewrap)。
 - **容器内命令名是 `ducx` / `baidu-codex`,不是 `codex`**,在
   `/root/.comate/.baidu-cx/baidu-cx-linux-amd64-*/bin/`,`which codex` 找不到。

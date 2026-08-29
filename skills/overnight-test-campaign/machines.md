@@ -152,7 +152,42 @@ export http_proxy=http://agent.baidu.com:8891 https_proxy=http://agent.baidu.com
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
+## 容器建好之后:跑环境初始化(必做)
+
+来源:KU《常用命令》`iLP-gei3L_-MnK`(用户个人库 `XKvIcmPUF0`,space `HFVrC7hq1Q`)
+开头的「环境初始化」代码块 —— **以文档现场内容为准,不要凭记忆复述脚本**。
+
+它做的事:装 BOS 客户端 `bcecmd` → 写 BOS 凭据 → 从用户的 BOS 网盘拉 `boot/` →
+跑 `restore.sh`。`restore.sh` 会**配好网盘挂载和用户本人的 ssh key**,
+所以这一步跑完容器才能 clone 内网 git 仓库(`ssh://git@icode.baidu.com:8235/...`)。
+
+流程位置:**建容器之后、冒烟自检之前**。顺序错了会在 clone 阶段卡住。
+
+```bash
+# 骨架(凭据与具体路径现场从 KU 文档取,勿写入记忆/脚本/仓库)
+cd /tmp && wget <bcecmd zip> && unzip -o ... && cp .../bcecmd /usr/sbin/ && chmod +x /usr/sbin/bcecmd
+mkdir -p ~/.go-bcecli && cat > ~/.go-bcecli/credentials <<'EOF'
+[Defaults]
+Ak = <从 KU 文档取>
+Sk = <从 KU 文档取>
+Sts =
+EOF
+bcecmd bos cp -r bos:/klx-pytorch-work-bd/chenlonglong01/boot/ /tmp/boot -y
+cd /tmp/boot && bash /tmp/boot/restore.sh
+```
+
+BOS 网盘根目录:`bos:/klx-pytorch-work-bd/chenlonglong01/`(`bcecmd bos ls -a` 可列)。
+
+> ⚠️ **这份 KU 文档正文里有明文长期凭据**(BOS AK/SK、GitHub token、若干机器密码)。
+> 我不把这些值写进记忆或任何文件;需要时现场读文档。
+> 委托 subagent 执行初始化时,让它自己去读该文档取值,不要把凭据放进 prompt 或日志。
+> 也提醒用户:这些 key 已在文档里长期明文存放,建议轮换并改为环境变量注入。
+
+该文档还是用户的常用命令总集(GPU/XPU/aot 各种 `docker run` 模板、pip 换源、
+NCCL 网卡配置、sglang 启动、清共享内存、各机房机器清单),需要时按 docGuid 现场查。
+
 ## 官方冒烟验证(照抄,P1 用得上)
+
 
 文档给的环境自检步骤,**这是最快确认容器可用的方式**:
 
