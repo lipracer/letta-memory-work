@@ -77,6 +77,23 @@ THOR(H100,172.19.53.15)有封装好的脚本:
   (`test_multi_kernel.py` 19 例 → 0 passed / 17 failed / 2 skipped)。
   这不是环境搭错,是镜像本身不带 —— 要跑 inductor 类测试**必须先解决 Triton**,
   否则夜间铺开只会拿到一片同因失败。派活前先问:这批测试需不需要 Triton。
+  昆仑定制版 xtriton wheel(用户 2026-08-29 提供,**公开 bucket 免凭据,但要 `--network host` 才下得动**):
+  `https://klx-public.bj.bcebos.com/luodan12/xtriton/0828/triton-3.6.0+gitdf5a9bcd-cp312-cp312-linux_x86_64.whl`
+  (`cp312` 配 `python312_torch212`;**用户说后面会升级,用前先问最新 URL**)。
+  装完必须双自证:`import triton; print(triton.__version__, triton.__file__)`
+  + `from torch._inductor.runtime.triton_compat import HAS_TRITON; print(HAS_TRITON)`。
+- **`HAS_TRITON=True` 不等于能跑 inductor 测试**(2026-08-29 血证):xtriton 3.6.0 装好、
+  `HAS_TRITON` 为 `True`,`test_multi_kernel.py` 仍是 **0 passed / 17 failed**,
+  错误换成 `RuntimeError: 0 compatible backends for target (cuda) ([]). There should only be one.`
+  —— 即 Triton 本体在、但**没有注册可用的 cuda 后端**。
+  所以 Triton 类环境的验收门禁**必须是"某个 inductor 测试真的 pass"**,
+  不能停在 import 自证;两层都过了才算环境就绪。
+- **`--collect-only` 的计数会随环境变化,不是静态事实**(2026-08-29 取证):装 Triton 前后
+  同一批 16 个文件从 **1997 → 2994**(+997)。变化来自 Triton 条件分支/import 层跳过恢复,
+  例:`test_compile_subprocess.py` 966→1930、`test_triton_heuristics.py` 0→24、
+  `test_coordinate_descent_tuner.py` 0→5、`test_best_config.py` 0→1、`test_custom_op_out_lowering.py` 3→6。
+  → **分母必须在"最终跑测试的那个环境"里取**,环境一变就要重取;
+  上轮 rc=5 "no tests collected" 往往是缺依赖导致的整体跳过,不是文件真没用例。
 - **不要在 PyTorch 源码树根目录下跑 pytest**:源码里的 `torch/` 目录会遮蔽已安装的 torch 包,
   报 `ModuleNotFoundError: torch.version`(2026-08-29 实测)。
   正确做法:`cd` 到源码树**外面**,用测试文件的绝对/相对路径跑
