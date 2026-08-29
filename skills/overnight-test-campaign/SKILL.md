@@ -47,7 +47,11 @@ P1 一定要人在场。
 登录链路、容器名、路径约定全部写在 runbook 文件里(见 `RUNBOOK-template.md`)。
 这样我的上下文不被登录细节占满,换机器只改 runbook。
 
-**每个 subagent 必须回报它实际执行的完整命令**,汇到战役目录同一个日志文件里 —— 用户要 review。
+**每个 subagent 跑完必须回传一份结构化 handback**(格式见 `HANDBACK-schema.md`):
+机器 ip / hostname / 盘与负载状态、选中的工作目录、容器名与 image tag、
+**进容器后逐条执行的命令原文 + rc**、测试结果计数、远端日志的路径+行数+md5。
+完整测试日志留在远端不回传,但元信息和摘要必须回来 —— **用户要逐条 review,这是硬要求。**
+没有 handback 的 agent 视为没干活,哪怕它口头说成功。
 
 ## 用户名不要写死
 
@@ -213,7 +217,9 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
 夜间任务要注意 8h 窗口:凌晨建的连接白天可能已过期。
 
 ### 审计
-所有 subagent 必须 `cd` 到同一个战役目录,日志汇到一个文件。
+所有 subagent 必须 `cd` 到同一个战役目录,并按 `HANDBACK-schema.md` 各交一份
+`handback/<阶段>-<节点>-<分片>.md`。主 agent 收齐后汇总 `handback/INDEX.md`,
+**缺哪份要点出来**,不能用"整体成功"盖过去。
 用户要 review 每一条实际下发的远端命令 —— 这是硬要求,不是可选项。
 
 ### 早上的交付
@@ -246,5 +252,6 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
 
 - `machines.md` —— 机器清单、登录链路、镜像与容器模板
 - `RUNBOOK-template.md` —— 交给 subagent 的自包含手册模板
-- `campaigns/` —— 每次战役的分片、基线、报告
+- `HANDBACK-schema.md` —— **每个 subagent 必须回传的结构化日志格式(用户 review 用)**
+- `campaigns/` —— 每次战役的分片、基线、handback、报告
 
