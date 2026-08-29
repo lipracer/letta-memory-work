@@ -297,8 +297,13 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
   且 `docker exec bash -lc` **每条都是新 shell,activate 不跨命令保留** —— 每条都要带,
   或 `source` 工作目录里的 `env.sh`。这条不做,整夜任务会在第一跳全片 `ModuleNotFoundError`。
   2026-08-29 双 agent 独立踩到同一处。
-- **用 `torch.xpu.is_available()` 当 device 门禁** —— 它在功能模拟器下是 **False**,
-  真正可用的是 `torch.cuda.is_available()`(模拟器经 cuda 接口暴露)。判错会跑出一片假绿的全 skip。
+- **用 `torch.xpu.*` 接口** —— **M300 软件栈兼容 CUDA,一律按 CUDA 写法用**:
+  `torch.cuda.is_available()` / `device="cuda"` / `.cuda()` / `TestCommonCUDA`。
+  实测 `torch.xpu.is_available()` = False 而 `torch.cuda.is_available()` = True,
+  拿前者当 device 门禁会让用例**全部误 skip**,早上看到一片假绿。好处是上游 CUDA 测试可原样复用。
+- **自己调模拟器环境变量** —— 镜像已把那一堆 `XPUSIM_*` / `CUDA_AMODEL_*` 配成自洽默认值,
+  **开箱就能跑通,一个都别改**(它们互相耦合,动一个就可能整套失配)。
+  唯一该主动设的是 `XPUSIM_LAUNCH_LOG_LEVEL=DISABLE`。要换档位按 `machines.md` 的成对配方改。
 - **把模拟器析构日志当报错** —— pytest 结束后 stderr 打印 `Kl5Top destructed` /
   `XpuSystem destructed`,设了 `XPUSIM_LAUNCH_LOG_LEVEL=DISABLE` 也照打,退出码不受影响。
 - **here-doc 写脚本** —— 引号转义反复出错。可靠做法:本机生成 → `base64 -i`(macOS **不支持

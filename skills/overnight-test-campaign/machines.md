@@ -150,15 +150,39 @@ export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE
 
 **runbook / prompt 里一律写 activate(或 source env.sh),不要写裸 `python`。**
 
-### 加速器接口:XPU 模拟器暴露为 cuda API(2026-08-29 实测)
+### 加速器接口:**M300 软件栈兼容 CUDA,就按 CUDA 用**(2026-08-29 实测 + 用户确认)
 
-同一容器里:`torch.xpu` 属性**存在**,但 `torch.xpu.is_available()` = **False**;
-而 `torch.cuda.is_available()` = **True**,`torch.cuda.get_device_name(0)` = `GPU`。
-即**功能模拟器是通过 cuda 接口暴露的**,device 上的算子能真跑通(不会 skip)。
+这是这套栈的**设计原则**,不是模拟器的临时特性:**M300 的软件栈对 CUDA 兼容**,
+所以上层代码、测试、判断一律**照 CUDA 的写法用**:
 
-含义:写 device 判断时用 `torch.cuda.is_available()`;别用 `torch.xpu.is_available()`
-当门禁,否则用例会被误 skip、整夜跑出一片"全 skip"的假绿。
-真实硬件上是否同样映射**尚未验证**,别把这条外推到真卡场景。
+| 场景 | 写法 |
+|---|---|
+| 可用性判断 | `torch.cuda.is_available()` |
+| device 字符串 | `"cuda"` / `torch.device("cuda")` |
+| 张量搬运 | `.cuda()` / `.to("cuda")` |
+| 卡数、卡名 | `torch.cuda.device_count()` / `torch.cuda.get_device_name(0)` |
+| 上游测试类 | 直接用 `TestCommonCUDA` 这类 CUDA 命名的类,不用改名 |
+| 环境变量 | `CUDA_VISIBLE_DEVICES` 等 CUDA 口径 |
+
+**不要因为硬件叫 XPU 就去找 `torch.xpu` 接口。** 实测同一容器里
+`torch.xpu` 属性存在,但 `torch.xpu.is_available()` = **False**;
+而 `torch.cuda.is_available()` = **True**、`torch.cuda.get_device_name(0)` = `GPU`。
+拿 `torch.xpu.is_available()` 当 device 门禁,用例会被**全部误 skip** ——
+早上看到一片绿,实际什么都没跑。**假绿比报红危险得多。**
+
+好处:**上游 PyTorch 的 CUDA 测试基本可以原样拿来跑**,不需要为 XPU 改一套。
+这也是 autotune 这类 inductor 测试能直接复用的前提。
+
+### 模拟器环境变量:**镜像里已经配好了,不要自己调**(2026-08-29 实测)
+
+模拟器涉及一堆环境变量(`XPU_SIMULATOR_MODE` / `XPUSIM_SIMULATOR_MODE` /
+`XPUSIM_DEVICE_MODEL` / `CUDA_AMODEL_DLL` / `CUDA_AMODEL_GPU` / `XTDK_PATH` / `XCUDA_HOME` …),
+但**镜像已经把它们全设成一套自洽的默认值**——容器起来 `import torch` + 在 device 上跑算子
+**开箱就通,一个变量都不用改**(双 agent 独立验证,均一次跑通)。
+
+**行为规则:别去"优化"或补设这些变量。** 它们互相耦合,改一个可能让整套失配;
+镜像默认值是官方验证过的。唯一建议主动设的是下面这个静音开关。
+真要改模拟器档位(如切 CYCLE 性能模拟器),按下面给的成对配方改,不要单独动某一个。
 
 模拟器相关开关:
 ```bash

@@ -106,8 +106,11 @@ ssh <ip> "docker exec <容器名> bash -lc 'hostname; id -un; pwd'"
 
 **跑 python 前必须 activate 统一环境**(见上文「进容器后第一件事」),
 不要用裸 `python` —— PATH 上那个是 miniconda base 3.13.13,**没有 torch**。
-写 device 判断用 `torch.cuda.is_available()`,**不要用 `torch.xpu.is_available()`**
-(功能模拟器下后者为 False,会让用例被误 skip)。
+**M300 软件栈兼容 CUDA —— 一律按 CUDA 写法用**:`torch.cuda.is_available()`、
+`device="cuda"`、`.cuda()`、`TestCommonCUDA`。**不要用 `torch.xpu.*`**
+(实测 `torch.xpu.is_available()` = False,拿它当门禁会让用例全部误 skip、跑出假绿)。
+**模拟器那堆环境变量镜像已配好,开箱可用,不要自己加或改** ——
+只需 `export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE` 静音。
 pytest 结束时 stderr 打印的 `Kl5Top destructed` / `XpuSystem destructed` **不是报错**。
 
 ## 写权限边界(硬约束,越界即停)
