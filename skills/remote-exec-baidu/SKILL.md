@@ -88,6 +88,38 @@ THOR(H100,172.19.53.15)有封装好的脚本:
   —— 即 Triton 本体在、但**没有注册可用的 cuda 后端**。
   所以 Triton 类环境的验收门禁**必须是"某个 inductor 测试真的 pass"**,
   不能停在 import 自证;两层都过了才算环境就绪。
+
+### M300 跑 `test/inductor`:xcn 后端 + target bridge(2026-08-30 隔离实验取证)
+
+跑通需要**两件事同时成立**,缺一个都是 `0 compatible backends for target (cuda)`:
+
+1. **`TRITON_ENABLE_XCN_BACKEND=true`** —— 注册 xcn 后端的开关。
+   不设:`backends` = `['triton_shared','xpu']`;设了:`['triton_shared','xcn']`。
+   (我 2026-08-29 第一次诊断就是漏了它,才误判成"wheel 缺 cuda 后端、要换包"。**结论是错的**。)
+2. **target bridge**(`sitecustomize.py` monkeypatch `triton.compile`)——
+   把 inductor 传来的 `GPUTarget(backend="cuda")` 换成 `GPUTarget(backend="houyi", arch="xpu5", warp_size=32)`。
+   **xcn 注册了也不接受 `cuda` target**:设了 env 后
+   `make_backend(GPUTarget('cuda',0,32))` 依然 `RuntimeError: 0 compatible backends`。
+   `houyi/xpu5` 是目前已知唯一能匹配 xcn 的 target 形式。
+   靠 `PYTHONPATH=.` 让 Python 启动时自动 import 当前目录的 `sitecustomize.py`,patch 才生效。
+   bridge 出处:用户仓库 `torchcompile-test`(长期容器内
+   `/workspace/m300/baidu/personal-code/torchcompile-test`,入口 `test_xpu.sh`)。
+
+实测有效的完整调用(`test_multi_kernel.py` → **4 passed / 12 failed / 3 skipped**,
+剩余失败已不是后端问题):
+```bash
+cd <源码树外的工作目录>   # 树根下跑会被本地 torch/ 遮蔽
+TC_PLATFORM=xpu TRITON_ENABLE_XCN_BACKEND=true TORCHINDUCTOR_COMPILE_THREADS=1 \
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/xcuda/targets/x86_64-linux/lib/" \
+PYTHONPATH=. python -m pytest xTorch/test/inductor/test_multi_kernel.py -q
+```
+`TORCHINDUCTOR_COMPILE_THREADS=1`:编译子进程会丢掉 monkeypatch,必须单线程。
+上层张量/device 全程仍是 **CUDA 口径**(`TEST_DEVICE=cuda:0`),不要改成 `torch.xpu`。
+
+**未取证**:去掉 bridge 只留 env 能不能过(实验 C 因单例耗时长被中止);
+`TC_PLATFORM` / `LD_LIBRARY_PATH` 是否必需也未逐项拆完。
+→ 这修正了上面"M300 一律按 CUDA 写法"那条:**eager 层按 CUDA 写没错,
+但 inductor→triton 这一跳需要显式 target 转换,不会自己发生。**
 - **`--collect-only` 的计数会随环境变化,不是静态事实**(2026-08-29 取证):装 Triton 前后
   同一批 16 个文件从 **1997 → 2994**(+997)。变化来自 Triton 条件分支/import 层跳过恢复,
   例:`test_compile_subprocess.py` 966→1930、`test_triton_heuristics.py` 0→24、
