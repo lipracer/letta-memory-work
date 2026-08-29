@@ -116,30 +116,57 @@ harbor 登录走 `https://sso.kunlunxin.com/`。
 
 ## 容器参数模板
 
-**M300 镜像官方模板(文档原文,模拟器模式,最简)**:
+### 工作目录约定(重要,先看这个再看模板)
+
+| 层 | 路径 | 统一性 |
+|---|---|---|
+| 宿主机 | `/ssd<N>/chenlonglong01`,**N 按每台机器实测最空的盘选** | 不统一(集群各盘余量差异大) |
+| 容器内 | `/workspace`,同时设 `-w /workspace` | **永远统一,脚本只认这个** |
+
+**绝不把工作目录放 home 或根分区** —— 根分区普遍只有 90G(细分区机型如 node33/node36 仅 19G),
+镜像+编译产物+autotune cache 会撑爆,还会连带影响同机其他人。
+
+实测参考(`chenlonglong01_m300_py312_torch212`,2026-08-29 `docker inspect`):
+```
+/ssd4/chenlonglong01 -> /workspace       WORKDIR=/workspace
+/ssd1 -> /ssd1   /ssd2 -> /ssd2   /ssd3 -> /ssd3   /ssd4 -> /ssd4   /klxlake -> /klxlake
+```
+四块 ssd 全平挂(临时放大产物方便换盘),其中一块作为 `/workspace`。
+选盘参考本文件上面的集群状态:`/ssd2` 通常最宽松,`/ssd1` `/ssd3` 是满盘重灾区。
+
+### M300 镜像模板(模拟器模式,推荐)
+
+在官方最简模板基础上加工作目录和 shm:
 
 ```bash
-docker_name=test_m300
+SSD=/ssd2      # ← 按 P0 体检结果改,选该机最空的盘
+docker_name=<战役名>_<日期>
 docker_image=iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12:20260714_27
 
+mkdir -p ${SSD}/chenlonglong01
 docker run -ti -d --name ${docker_name} \
        --ipc=host --pid=host --net=host \
+       --shm-size=64g \
+       -v ${SSD}/chenlonglong01:/workspace \
+       -v /ssd1:/ssd1 -v /ssd2:/ssd2 -v /ssd3:/ssd3 -v /ssd4:/ssd4 \
+       -v /klxlake:/klxlake \
+       -w /workspace \
        ${docker_image} /bin/bash
 ```
 
-注意官方模板**没有** `--device=/dev/xpu*`、没有 `--privileged`、没挂 `/ssdN` ——
-因为跑模拟器不需要卡。**夜间战役建议在此基础上只加两样**:
-`--shm-size=64g`(PyTorch 测试少了会诡异挂)和 `-v <产物目录>:/output`(结果要能带出来)。
+官方原版模板只有 `--ipc=host --pid=host --net=host`(不需要 `--device`/`--privileged`,
+因为跑模拟器不用卡)。`--shm-size=64g` 别省,PyTorch 测试少了会诡异挂。
 
-**真实硬件模板**(仅当确认要上真卡时用,且需先锁卡):
+### 真实硬件模板(仅确认要上真卡时用,需先锁卡)
 
 ```bash
 docker run -itd --name <name> \
   --device=/dev/xpu0 ... --device=/dev/xpu7 --device=/dev/xpuctrl \
   --privileged --net=host --shm-size=64g \
   --ulimit memlock=-1 --ulimit nofile=120000 --ulimit stack=67108864 \
-  -v $PWD:/workspace -v /ssd1:/ssd1 -v /ssd2:/ssd2 -v /ssd3:/ssd3 -v /ssd4:/ssd4 \
-  -v /klxlake:/klxlake --cpuset-cpus=0-120 \
+  -v /ssd<N>/chenlonglong01:/workspace \
+  -v /ssd1:/ssd1 -v /ssd2:/ssd2 -v /ssd3:/ssd3 -v /ssd4:/ssd4 \
+  -v /klxlake:/klxlake -w /workspace --cpuset-cpus=0-120 \
   <image>
 ```
 

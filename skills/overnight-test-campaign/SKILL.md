@@ -64,18 +64,44 @@ wxtky-probe check <ip>     # hostname + df -h + du -x -h -d 1 /
 docker pull <registry>/<image>:<tag>          # 先拉,失败得早比失败得晚好
 ```
 
-### 2. 建容器
-用 `machines.md` 里的模板。模拟器模式下官方模板很简单
-(`--ipc=host --pid=host --net=host`,不需要 `--device`/`--privileged`),
-建议只额外加 `--shm-size=64g` 和一个 `-v <产物目录>:/output`。
+### 2. 建容器 —— ⚠️ 工作目录必须落在 /ssdN,不能在 home
 
-### 3. 跑环境初始化(必做,顺序不能错)
+**这是最容易在半夜炸掉整场战役的一步。** 根分区/home 只有几十 G,
+镜像 + 编译产物 + autotune cache + 测试日志很快吃满,而且撑爆根分区会连带影响机器上别人的活。
+
+**约定(照 m300 pytorch 容器的实测配置):**
+
+| 层 | 路径 | 是否统一 |
+|---|---|---|
+| 宿主机 | `/ssd<N>/chenlonglong01` —— **N 按每台机器实测最空的那块选** | ❌ 不统一,也不需要统一 |
+| 容器内 | `/workspace`(同时是 `WORKDIR`) | ✅ **永远统一** |
+
+所以**统一脚本只认容器内的 `/workspace`**,宿主机是 ssd1 还是 ssd4 对脚本毫无影响。
+不要为了"路径统一"去强用同一块盘 —— 集群里 `/ssd1` `/ssd3` 是满盘重灾区,
+`/ssd2` 最宽松,硬统一必然撞上某台机器那块盘已满。
+
+参考实测(`chenlonglong01_m300_py312_torch212`,2026-08-29 `docker inspect`):
+```
+/ssd4/chenlonglong01 -> /workspace      WORKDIR=/workspace
+/ssd1 -> /ssd1   /ssd2 -> /ssd2   /ssd3 -> /ssd3   /ssd4 -> /ssd4   /klxlake -> /klxlake
+```
+四块 ssd 都平挂进去(方便临时换盘放大产物),只有一块作为 `/workspace`。
+
+**建容器前必须先定 N**,靠 P0 的 `df -h` 输出选,并把选中的盘记进战役报告
+(排查问题时"当时用的哪块盘"是关键信息)。
+
+模板与完整 flag 见 `machines.md`;模拟器模式下官方模板很简单
+(`--ipc=host --pid=host --net=host`),额外加 `--shm-size=64g`、
+`-v /ssd<N>/chenlonglong01:/workspace -w /workspace`,以及四块 ssd 的平挂。
+
+### 3. 跑环境初始化(配网盘 + ssh key)
 容器起来是"裸"的 —— 没有网盘、没有用户的 ssh key,**clone 内网 git 仓库会直接失败**。
-先跑 KU《常用命令》`iLP-gei3L_-MnK` 开头的「环境初始化」脚本
+跑 KU《常用命令》`iLP-gei3L_-MnK` 开头的「环境初始化」脚本
 (装 `bcecmd` → 从 BOS 拉 `boot/` → `bash restore.sh`,配好网盘和 ssh key)。
 完整骨架和注意事项见 `machines.md`。
 
-**位置:建容器之后、冒烟自检之前。** 放错顺序会在 clone 阶段卡住,而且是半夜卡住。
+**只要在任何 clone 之前跑掉就行**(所以在冒烟自检之前)。漏跑的症状是 clone 阶段卡住,
+半夜卡住等于整场白跑。
 
 凭据在那份 KU 文档正文里明文写着 —— **现场读取,不落盘、不进 prompt、不进日志**。
 
@@ -162,6 +188,8 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
 
 ## 常见坑
 
+- **工作目录建在 home/根分区** —— 最常见的自毁方式。必须落 `/ssd<N>/chenlonglong01`,
+  容器内统一映射成 `/workspace`。选盘要看 P0 的 `df -h`,别抄别的机器的盘号。
 - **新容器没跑初始化就 clone** —— 没有 ssh key,`ssh://git@icode.baidu.com:8235/...` 直接失败。
   先跑 P1 第 3 步。
 - **凭据不落盘** —— 初始化用的 BOS AK/SK 在 KU 文档明文里,现场读、用完不写进任何文件、
