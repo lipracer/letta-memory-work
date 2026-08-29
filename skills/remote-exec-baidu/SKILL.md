@@ -116,8 +116,14 @@ PYTHONPATH=. python -m pytest xTorch/test/inductor/test_multi_kernel.py -q
 `TORCHINDUCTOR_COMPILE_THREADS=1`:编译子进程会丢掉 monkeypatch,必须单线程。
 上层张量/device 全程仍是 **CUDA 口径**(`TEST_DEVICE=cuda:0`),不要改成 `torch.xpu`。
 
-**未取证**:去掉 bridge 只留 env 能不能过(实验 C 因单例耗时长被中止);
-`TC_PLATFORM` / `LD_LIBRARY_PATH` 是否必需也未逐项拆完。
+**bridge 必需,已用严格对照实证**(2026-08-30,同一用例 `test_inplace_update`,唯一变量是 `PYTHONPATH=.`):
+- 有 bridge:`1 passed, 18 deselected in 62.89s`
+- 无 bridge:`rc=124`,**硬超时 900s 仍未出汇总行**(≥14× 慢)
+注意失败形态:**去掉 bridge 不是报 `0 compatible backends`,而是"跑不完"** ——
+inductor 内部不走裸 `make_backend(GPUTarget('cuda'))`,不报错,改走某条极慢的回退路径。
+→ 教训:**这类环境问题不能只看"有没有报错",要看"有没有在合理时间内 pass"**;
+派这类验证一律带 `timeout`,否则会一直挂着并被误读成"在正常跑"。
+`TC_PLATFORM` / `LD_LIBRARY_PATH` 是否必需仍未逐项拆完(非阻塞,照抄全套即可)。
 → 这修正了上面"M300 一律按 CUDA 写法"那条:**eager 层按 CUDA 写没错,
 但 inductor→triton 这一跳需要显式 target 转换,不会自己发生。**
 - **`--collect-only` 的计数会随环境变化,不是静态事实**(2026-08-29 取证):装 Triton 前后
