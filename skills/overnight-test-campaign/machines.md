@@ -36,7 +36,10 @@ node33/node36 是**细分区机型**(根仅 19G,`/var` `/tmp` 独立),不能与 
 
 ### 命令怎么落进容器(不要用容器内 agent)
 
-**容器内起不了 ducx / baidu-codex(2026-08-29 用户确认)。** 执行主体是**本机 Letta subagent**,
+**容器内起不了 ducx / baidu-codex(2026-08-29 双 agent 实测确认)。** 二进制**确实存在**于
+`/root/.comate/.baidu-cx/{baidu-cx,baidu-cx-linux-amd64-*,baidu-cx.old}/bin/{ducx,baidu-codex}`,
+但**都不在 PATH 上**(`which ducx baidu-codex codex` 无输出、rc=1);且用户已确认容器内起不来。
+**不要因为"文件在那儿"就去启动它。** 执行主体是**本机 Letta subagent**,
 通路是 `ssh <节点>` + `docker exec <容器>`:
 
 ```bash
@@ -106,13 +109,50 @@ docker pull iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12
 其他默认环境变量:`XCUDA_HOME=/usr/local/xcuda/`、`TRITON_ENABLE_XCN_BACKEND=true`,
 torch / triton 均已预装 whl。
 
+### ⚠️ 容器里的 `python` **没有 torch**(2026-08-29 双 agent 独立实测)
+
+**这是最容易让整夜任务在第一跳全军覆没的坑。** PATH 上的 `python` 是
+`/root/miniconda/bin/python`(miniconda base,**Python 3.13.13,无 torch**),
+`import torch` 直接 `ModuleNotFoundError`。
+
+torch `2.12.0a0+git0382020` 装在 conda env **`python312_torch212`**(Python 3.12.13,pytest 7.3.2)。
+两种进入方式,都实测可用:
+
+```bash
+# 方式一(推荐,无状态):用容器预设的 $PYTHON 变量
+$PYTHON -m pytest test_xxx.py -v          # $PYTHON=/root/miniconda/envs/python312_torch212/bin/python
+                                          # 另有 $PIP 指向同环境 pip
+# 方式二:显式 activate
+source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212
+python -m pytest test_xxx.py -v
+```
+
+**runbook / prompt 里一律写 `$PYTHON`,不要写裸 `python`。**
+
+### 加速器接口:XPU 模拟器暴露为 cuda API(2026-08-29 实测)
+
+同一容器里:`torch.xpu` 属性**存在**,但 `torch.xpu.is_available()` = **False**;
+而 `torch.cuda.is_available()` = **True**,`torch.cuda.get_device_name(0)` = `GPU`。
+即**功能模拟器是通过 cuda 接口暴露的**,device 上的算子能真跑通(不会 skip)。
+
+含义:写 device 判断时用 `torch.cuda.is_available()`;别用 `torch.xpu.is_available()`
+当门禁,否则用例会被误 skip、整夜跑出一片"全 skip"的假绿。
+真实硬件上是否同样映射**尚未验证**,别把这条外推到真卡场景。
+
 模拟器相关开关:
 ```bash
 export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE     # 关掉模拟器刷屏输出(夜间跑务必设,否则日志爆炸)
+# 注意:即使设了它,pytest 结束时仍会打印析构日志
+# ([...] top.h:128: Kl5Top destructed / xpu_system.cpp:277: XpuSystem destructed),
+# 走 stderr、不影响退出码,**不是报错**,别当失败处理。
 # 性能模拟器(比功能模拟器更慢,按需):
 export XPUSIM_SIMULATOR_MODE=CYCLE
 export XPUSIM_CA_CFG=/usr/local/xse-ubuntu_2004_x86_64/config/config.json
 ```
+
+参考耗时(功能模拟器,node41 208 核,2026-08-29 实测):最简 add 3 用例
+`3 passed in 3.24s~4.73s`,其中 **device 首次初始化占 2.33~3.78s**(CPU 用例仅 0.01s)。
+即每个进程有约 2-4s 的设备初始化固定开销 —— 分片时别把它算进单例耗时。
 
 其他镜像(非 M300 主线):
 - `iregistry.baidu-int.com/xmlir/xmlir_ubuntu_2004_x86_64:v0.32`

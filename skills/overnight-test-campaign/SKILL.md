@@ -203,8 +203,12 @@ autotune 场景推荐 `test_multi_kernel.py`(14 个用例,H2 即可,不需要 CU
 
 ```bash
 cd <repo>/test/inductor    # xTorch 在容器内 /workspace/m300/torch_feature/xTorch
-python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
+export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE
+$PYTHON -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
 ```
+
+**注意用 `$PYTHON`,不是裸 `python`** —— 容器 PATH 上的 `python` 是 miniconda base(3.13,无 torch),
+详见 `machines.md`「容器里的 python 没有 torch」。日志落**工作目录**,别落 `/tmp`。
 
 **P1 必须产出这四个数,拿不到就不许进 P2:**
 
@@ -216,6 +220,9 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
 | 环境变量 / config patch | 有些测试类要 `setUpClass` 打 config |
 
 耗时**必须在实际要用的模式下测**(模拟器 vs 真卡差一个量级以上),不能外推。
+算平均耗时时**扣掉每进程约 2-4s 的设备初始化固定开销**(2026-08-29 实测:
+最简 add 用例里 device 首次初始化占 2.33~3.78s,CPU 用例仅 0.01s),
+否则会把固定开销摊进每个用例、把分片估得过粗。
 
 把这四项写进 `campaigns/<名字>/P1-baseline.md`。
 
@@ -282,8 +289,18 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
   先跑 P1 第 3 步。
 - **凭据不落盘** —— 初始化用的 BOS AK/SK 在 KU 文档明文里,现场读、用完不写进任何文件、
   不进日志、不进 subagent 的 prompt。
-- **别指望容器内 agent** —— 容器里起不了 ducx/baidu-codex(2026-08-29 确认)。
-  执行主体是本机 subagent,经 `ssh` + `docker exec` 下发。
+- **裸 `python` 没有 torch** —— 容器 PATH 上是 miniconda base(3.13,无 torch)。
+  一律用 `$PYTHON`(或先 `conda activate python312_torch212`)。这条不做,整夜任务会在
+  第一跳全片 `ModuleNotFoundError`。2026-08-29 双 agent 独立踩到同一处。
+- **用 `torch.xpu.is_available()` 当 device 门禁** —— 它在功能模拟器下是 **False**,
+  真正可用的是 `torch.cuda.is_available()`(模拟器经 cuda 接口暴露)。判错会跑出一片假绿的全 skip。
+- **把模拟器析构日志当报错** —— pytest 结束后 stderr 打印 `Kl5Top destructed` /
+  `XpuSystem destructed`,设了 `XPUSIM_LAUNCH_LOG_LEVEL=DISABLE` 也照打,退出码不受影响。
+- **here-doc 写脚本** —— 引号转义反复出错。可靠做法:本机生成 → `base64 -i`(macOS **不支持
+  `-w0`**)→ 容器内 `base64 -d` 落盘 → 双端 `md5sum` 比对。2026-08-29 实测一次成功。
+- **别指望容器内 agent** —— 容器里起不了 ducx/baidu-codex。二进制**确实存在**于
+  `/root/.comate/.baidu-cx/*/bin/` 但不在 PATH(2026-08-29 实测 `which` rc=1),
+  **不要因为文件在那儿就去启动它**。执行主体是本机 subagent,经 `ssh` + `docker exec` 下发。
 - **确认命令真的落在容器里** —— 2026-08-25 有过本地 subagent 被误当成容器 agent、结果作废的先例。
   用 `docker exec <容器> hostname` 之类的自证命令确认落点。
 - **不要内联长脚本** —— here-doc / 引号转义反复炸(`zsh: parse error`)。

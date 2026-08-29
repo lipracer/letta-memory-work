@@ -67,7 +67,16 @@ ssh <ip> "docker exec <容器名> bash -lc 'hostname; id -un; pwd'"
 工作目录:容器内统一 `/workspace`(宿主机侧是 `/ssd<N>/$(id -un)`,N 由体检阶段定)。
 **绝不在 home 或根分区下建工作目录。**
 
-**不要内联长脚本** —— here-doc 和引号转义会反复出错。用 `docker cp` 把脚本送进容器再执行。
+**不要内联长脚本** —— here-doc 和引号转义会反复出错。可靠做法(2026-08-29 实测一次成功):
+本机生成脚本 → `base64 -i <file>`(macOS **不支持 `-w0`**)→ 容器内
+`echo '<b64>' | base64 -d > <目标>` → 双端 `md5sum` 比对确认写入完整。
+
+**跑 python 一律用 `$PYTHON`,不要用裸 `python`** —— 容器 PATH 上的 `python` 是
+miniconda base(3.13.13,**没有 torch**);torch 在 `$PYTHON`
+(`/root/miniconda/envs/python312_torch212/bin/python`,3.12.13)。
+写 device 判断用 `torch.cuda.is_available()`,**不要用 `torch.xpu.is_available()`**
+(功能模拟器下后者为 False,会让用例被误 skip)。
+pytest 结束时 stderr 打印的 `Kl5Top destructed` / `XpuSystem destructed` **不是报错**。
 
 ## 写权限边界(硬约束,越界即停)
 
