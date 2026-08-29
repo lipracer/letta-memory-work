@@ -8,7 +8,8 @@ description: 夜间测试战役用到的机器清单、登录链路、镜像与�
 
 ## wxtky P800 集群(XPU,内网 relay)
 
-登录:本机 → `relay-cli proxy`(百度审计网关)→ 目标节点,账号 `chenlonglong01` 免密。
+登录:本机 → `relay-cli proxy`(百度审计网关)→ 目标节点,当前用户免密
+(账号即 `$(id -un)`,实测为 `chenlonglong01`)。
 `~/.ssh/config` 中 `10.206.19*.*` 通配覆盖 192/193/194 三网段(2026-08-28 实测跨段可达)。
 
 工具:`~/.local/bin/wxtky-probe {open|run|check|close|log}`,内置**只读白名单硬拦截**
@@ -33,16 +34,21 @@ node18(根 86%)、node20/22/39/50/51/66/67(有盘 Avail=0)。
 根分区 `/dev/sda2` 90G 普遍只用 9~21%。`/klxlake`(JuiceFS 4.0P)全集群一致 51%,是共享存储。
 node33/node36 是**细分区机型**(根仅 19G,`/var` `/tmp` 独立),不能与 90G 单根机型按剩余量混排。
 
-### 容器内 agent(m300)
+### 命令怎么落进容器(不要用容器内 agent)
+
+**容器内起不了 ducx / baidu-codex(2026-08-29 用户确认)。** 执行主体是**本机 Letta subagent**,
+通路是 `ssh <节点>` + `docker exec <容器>`:
 
 ```bash
-~/.local/bin/dev-agent "任务"
-# = ssh devbox → docker exec chenlonglong01_m300_py312_torch212
-#   → ducx exec "$TASK" --skip-git-repo-check -s danger-full-access   (cwd /workspace)
+ssh <节点> "docker exec <容器> bash -lc '<命令>'"
+# 落点自证(每个 subagent 开工第一条):
+ssh <节点> "docker exec <容器> bash -lc 'hostname; id -un; pwd'"
 ```
 
-agent 路径 `/root/.comate/.baidu-cx/baidu-cx-linux-amd64-10.147.0.3/bin/`,
-命令名 `ducx` / `baidu-codex`(**不是 `codex`**)。
+`~/.local/bin/dev-agent` 是老封装(ssh devbox → docker exec → `ducx exec`),
+**它依赖容器内 agent,现在这条路不通,不要用于本战役。**
+
+长脚本不要内联(引号/here-doc 反复炸):先 `docker cp` 脚本进容器再执行。
 
 ## 美研 GPU 机器
 
@@ -120,15 +126,17 @@ harbor 登录走 `https://sso.kunlunxin.com/`。
 
 | 层 | 路径 | 统一性 |
 |---|---|---|
-| 宿主机 | `/ssd<N>/chenlonglong01`,**N 按每台机器实测最空的盘选** | 不统一(集群各盘余量差异大) |
+| 宿主机 | `/ssd<N>/$(id -un)`,**N 按每台机器实测最空的盘选** | 不统一(集群各盘余量差异大) |
 | 容器内 | `/workspace`,同时设 `-w /workspace` | **永远统一,脚本只认这个** |
+
+**用户名一律现场取**(`RUSER=$(id -un)`),不要写死账号名 —— 技能要能给别人用。
 
 **绝不把工作目录放 home 或根分区** —— 根分区普遍只有 90G(细分区机型如 node33/node36 仅 19G),
 镜像+编译产物+autotune cache 会撑爆,还会连带影响同机其他人。
 
-实测参考(`chenlonglong01_m300_py312_torch212`,2026-08-29 `docker inspect`):
+实测参考(当前用户的 `m300_py312_torch212` 容器,2026-08-29 `docker inspect`):
 ```
-/ssd4/chenlonglong01 -> /workspace       WORKDIR=/workspace
+/ssd4/<user> -> /workspace                WORKDIR=/workspace
 /ssd1 -> /ssd1   /ssd2 -> /ssd2   /ssd3 -> /ssd3   /ssd4 -> /ssd4   /klxlake -> /klxlake
 ```
 四块 ssd 全平挂(临时放大产物方便换盘),其中一块作为 `/workspace`。
@@ -139,15 +147,16 @@ harbor 登录走 `https://sso.kunlunxin.com/`。
 在官方最简模板基础上加工作目录和 shm:
 
 ```bash
-SSD=/ssd2      # ← 按 P0 体检结果改,选该机最空的盘
-docker_name=<战役名>_<日期>
+RUSER=$(id -un)                        # 别写死用户名
+SSD=/ssd2                              # ← 按 P0 体检结果改,选该机最空的盘
+docker_name=${RUSER}_<战役名>_<日期>
 docker_image=iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12:20260714_27
 
-mkdir -p ${SSD}/chenlonglong01
+mkdir -p ${SSD}/${RUSER}
 docker run -ti -d --name ${docker_name} \
        --ipc=host --pid=host --net=host \
        --shm-size=64g \
-       -v ${SSD}/chenlonglong01:/workspace \
+       -v ${SSD}/${RUSER}:/workspace \
        -v /ssd1:/ssd1 -v /ssd2:/ssd2 -v /ssd3:/ssd3 -v /ssd4:/ssd4 \
        -v /klxlake:/klxlake \
        -w /workspace \
@@ -160,11 +169,12 @@ docker run -ti -d --name ${docker_name} \
 ### 真实硬件模板(仅确认要上真卡时用,需先锁卡)
 
 ```bash
+RUSER=$(id -un); SSD=/ssd2
 docker run -itd --name <name> \
   --device=/dev/xpu0 ... --device=/dev/xpu7 --device=/dev/xpuctrl \
   --privileged --net=host --shm-size=64g \
   --ulimit memlock=-1 --ulimit nofile=120000 --ulimit stack=67108864 \
-  -v /ssd<N>/chenlonglong01:/workspace \
+  -v ${SSD}/${RUSER}:/workspace \
   -v /ssd1:/ssd1 -v /ssd2:/ssd2 -v /ssd3:/ssd3 -v /ssd4:/ssd4 \
   -v /klxlake:/klxlake -w /workspace --cpuset-cpus=0-120 \
   <image>
@@ -188,10 +198,11 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 跑 `restore.sh`。`restore.sh` 会**配好网盘挂载和用户本人的 ssh key**,
 所以这一步跑完容器才能 clone 内网 git 仓库(`ssh://git@icode.baidu.com:8235/...`)。
 
-流程位置:**建容器之后、冒烟自检之前**。顺序错了会在 clone 阶段卡住。
+流程位置:**在任何 clone 之前**跑掉(所以放在冒烟自检之前)。漏跑会在 clone 阶段卡住。
 
 ```bash
 # 骨架(凭据与具体路径现场从 KU 文档取,勿写入记忆/脚本/仓库)
+RUSER=$(id -un)          # 别写死用户名
 cd /tmp && wget <bcecmd zip> && unzip -o ... && cp .../bcecmd /usr/sbin/ && chmod +x /usr/sbin/bcecmd
 mkdir -p ~/.go-bcecli && cat > ~/.go-bcecli/credentials <<'EOF'
 [Defaults]
@@ -199,11 +210,12 @@ Ak = <从 KU 文档取>
 Sk = <从 KU 文档取>
 Sts =
 EOF
-bcecmd bos cp -r bos:/klx-pytorch-work-bd/chenlonglong01/boot/ /tmp/boot -y
+bcecmd bos cp -r bos:/klx-pytorch-work-bd/${RUSER}/boot/ /tmp/boot -y
 cd /tmp/boot && bash /tmp/boot/restore.sh
 ```
 
-BOS 网盘根目录:`bos:/klx-pytorch-work-bd/chenlonglong01/`(`bcecmd bos ls -a` 可列)。
+BOS 网盘根目录:`bos:/klx-pytorch-work-bd/${RUSER}/`(`bcecmd bos ls -a` 可列;
+当前用户实测为 `chenlonglong01`,换人要先确认该前缀存在)。
 
 > ⚠️ **这份 KU 文档正文里有明文长期凭据**(BOS AK/SK、GitHub token、若干机器密码)。
 > 我不把这些值写进记忆或任何文件;需要时现场读文档。
@@ -254,4 +266,4 @@ popd
 - xTorch 在**容器内** `/workspace/m300/torch_feature/xTorch`(`version.txt` = `2.12.0a0`),
   有 `test/`,无顶层 `inductor/`。宿主机看不到。
 - 远端仓库 `ssh://git@dev.kunlunxin.com:30004/klx/XTrainer/xTorch.git`
-- `cuda-rt-hook` 在**宿主机** `/home/users/chenlonglong01/cuda-rt-hook`(容器 `/workspace` 里看不到)
+- `cuda-rt-hook` 在**宿主机** `/home/users/$(id -un)/cuda-rt-hook`(容器 `/workspace` 里看不到)

@@ -25,7 +25,11 @@ description: 交给 subagent 的自包含执行手册模板,照抄后按战役�
 3. <步骤3,如:收集结果>
 
 ## 登录链路
-本机 mac → `relay-cli proxy`(百度审计网关)→ 目标节点。账号固定 `<user>`,免密。
+本机 mac → `relay-cli proxy`(百度审计网关)→ 目标节点。当前用户免密,**用户名现场取**:
+
+```bash
+RUSER=$(ssh <ip> 'id -un')     # 不要在脚本里写死账号名
+```
 
 `~/.ssh/config` 里已有针对 `<网段通配>` 的段,含 `ControlMaster auto` + `ControlPersist 8h`,
 socket 落在 `~/.ssh/sessions/`。**首次连某台会走一次 relay 指纹认证(慢,30-60s);
@@ -43,17 +47,27 @@ socket 落在 `~/.ssh/sessions/`。**首次连某台会走一次 relay 指纹认
 这是保护,不要绕过,也不要改这个脚本。
 
 <!-- 若本阶段需要写操作(建容器/跑测试),在此明确列出允许的命令类型,
-     并说明为何白名单工具不适用、改用什么通路(如 dev-agent / docker exec) -->
+     并说明为何白名单工具不适用、改用什么通路 -->
 
 ## 容器内执行
-```bash
-docker exec <容器名> bash -lc '<命令>'
-```
-容器内跑 agent 时:命令名是 `ducx`(不是 `codex`),路径
-`/root/.comate/.baidu-cx/baidu-cx-linux-amd64-*/bin/`,**必须加 `-s danger-full-access`**
-(默认 read-only 在容器里起不来)。
 
-**不要内联长脚本** —— here-doc 和引号转义会反复出错。写到容器内临时文件再执行。
+**你(本机 subagent)就是执行者。容器里起不了 ducx/baidu-codex,不要尝试。**
+所有命令经 `ssh` + `docker exec` 下发:
+
+```bash
+ssh <ip> "docker exec <容器名> bash -lc '<命令>'"
+```
+
+**开工第一条必须自证落点**(避免把本机当成容器、结果作废 —— 有先例):
+
+```bash
+ssh <ip> "docker exec <容器名> bash -lc 'hostname; id -un; pwd'"
+```
+
+工作目录:容器内统一 `/workspace`(宿主机侧是 `/ssd<N>/$(id -un)`,N 由体检阶段定)。
+**绝不在 home 或根分区下建工作目录。**
+
+**不要内联长脚本** —— here-doc 和引号转义会反复出错。用 `docker cp` 把脚本送进容器再执行。
 
 ## 日志
 每条实际下发的远端命令 + 返回码 + 输出摘要都会追加到**当前工作目录**的

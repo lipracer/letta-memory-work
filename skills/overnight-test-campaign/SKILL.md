@@ -26,6 +26,43 @@ error,第二天没有任何可用信息,白烧一晚机器。
 P1 是整套东西的价值所在:**没有真实耗时就无法定分片**,没跑过一次就不知道环境缺什么。
 P1 一定要人在场。
 
+## 执行模型:本机 subagent 下发,不依赖容器内 agent
+
+**容器里起不了 ducx/baidu-codex(2026-08-29 用户确认)。** 别再指望"把任务丢给容器内 agent
+自己干" —— 唯一可靠的执行主体是**本机的 Letta subagent**,它通过
+`ssh <节点>` + `docker exec <容器>` 把命令下发进去。容器只是被操作的对象,不是执行者。
+
+每个环节都委托给 subagent,不要我自己在主上下文里逐条 ssh:
+
+| 环节 | 委托内容 |
+|---|---|
+| 连接 / 体检 | 建长连接、`df -h`、`nproc`、`docker ps`,回报选机结论 |
+| 建目录 | 定 `/ssd<N>`、`mkdir -p` 工作目录 |
+| 拉镜像 / 起容器 | `docker pull` + `docker run`(参数见 `machines.md`) |
+| 环境初始化 | 跑 BOS `restore.sh` 配网盘和 ssh key |
+| 冒烟测试 | 官方单例 + 目标最小用例,回报 pass/fail 和耗时 |
+| 夜间分片 | 每片一个 subagent,按 runbook 执行 |
+
+委托纪律:prompt 里只写"cd 到哪、读哪个 runbook、负责什么、交付什么格式";
+登录链路、容器名、路径约定全部写在 runbook 文件里(见 `RUNBOOK-template.md`)。
+这样我的上下文不被登录细节占满,换机器只改 runbook。
+
+**每个 subagent 必须回报它实际执行的完整命令**,汇到战役目录同一个日志文件里 —— 用户要 review。
+
+## 用户名不要写死
+
+技能要能给别人用,也要扛住账号变化。**路径里的用户名一律现场取,不写字面量。**
+
+```bash
+# 远端节点上的用户名(在 subagent 的远端会话里取)
+RUSER=$(id -un)                    # 或 ssh <节点> 'id -un'
+WORKROOT=/ssd${SSD_N}/${RUSER}     # SSD_N 由 P0 体检选出
+```
+
+同理:BOS 网盘路径 `bos:/klx-pytorch-work-bd/${RUSER}/`、容器命名
+`${RUSER}_<战役名>_<日期>` 都用变量拼。文档里出现的 `chenlonglong01`
+只是**当前用户的实测样例**,照抄前先确认 `id -un` 是不是同一个人。
+
 ## P0:选机与体检
 
 **先确认这批测试跑在真实硬件还是模拟器上 —— 这决定了选机标准。**
@@ -73,16 +110,16 @@ docker pull <registry>/<image>:<tag>          # 先拉,失败得早比失败得�
 
 | 层 | 路径 | 是否统一 |
 |---|---|---|
-| 宿主机 | `/ssd<N>/chenlonglong01` —— **N 按每台机器实测最空的那块选** | ❌ 不统一,也不需要统一 |
+| 宿主机 | `/ssd<N>/$(id -un)` —— **N 按每台机器实测最空的那块选** | ❌ 不统一,也不需要统一 |
 | 容器内 | `/workspace`(同时是 `WORKDIR`) | ✅ **永远统一** |
 
 所以**统一脚本只认容器内的 `/workspace`**,宿主机是 ssd1 还是 ssd4 对脚本毫无影响。
 不要为了"路径统一"去强用同一块盘 —— 集群里 `/ssd1` `/ssd3` 是满盘重灾区,
 `/ssd2` 最宽松,硬统一必然撞上某台机器那块盘已满。
 
-参考实测(`chenlonglong01_m300_py312_torch212`,2026-08-29 `docker inspect`):
+参考实测(当前用户 `chenlonglong01` 的 `m300_py312_torch212` 容器,2026-08-29 `docker inspect`):
 ```
-/ssd4/chenlonglong01 -> /workspace      WORKDIR=/workspace
+/ssd4/<user> -> /workspace              WORKDIR=/workspace
 /ssd1 -> /ssd1   /ssd2 -> /ssd2   /ssd3 -> /ssd3   /ssd4 -> /ssd4   /klxlake -> /klxlake
 ```
 四块 ssd 都平挂进去(方便临时换盘放大产物),只有一块作为 `/workspace`。
@@ -92,7 +129,7 @@ docker pull <registry>/<image>:<tag>          # 先拉,失败得早比失败得�
 
 模板与完整 flag 见 `machines.md`;模拟器模式下官方模板很简单
 (`--ipc=host --pid=host --net=host`),额外加 `--shm-size=64g`、
-`-v /ssd<N>/chenlonglong01:/workspace -w /workspace`,以及四块 ssd 的平挂。
+`-v /ssd<N>/$(id -un):/workspace -w /workspace`,以及四块 ssd 的平挂。
 
 ### 3. 跑环境初始化(配网盘 + ssh key)
 容器起来是"裸"的 —— 没有网盘、没有用户的 ssh key,**clone 内网 git 仓库会直接失败**。
@@ -188,16 +225,17 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee /tmp/p1.log
 
 ## 常见坑
 
-- **工作目录建在 home/根分区** —— 最常见的自毁方式。必须落 `/ssd<N>/chenlonglong01`,
+- **工作目录建在 home/根分区** —— 最常见的自毁方式。必须落 `/ssd<N>/$(id -un)`,
   容器内统一映射成 `/workspace`。选盘要看 P0 的 `df -h`,别抄别的机器的盘号。
+- **用户名写死** —— 路径里用 `$(id -un)`,别硬编码某个账号名。
 - **新容器没跑初始化就 clone** —— 没有 ssh key,`ssh://git@icode.baidu.com:8235/...` 直接失败。
   先跑 P1 第 3 步。
 - **凭据不落盘** —— 初始化用的 BOS AK/SK 在 KU 文档明文里,现场读、用完不写进任何文件、
   不进日志、不进 subagent 的 prompt。
-- **容器内 ducx 必须 `-s danger-full-access`** —— 默认 `read-only` 在容器里起不来(缺 bubblewrap)。
-- **容器内命令名是 `ducx` / `baidu-codex`,不是 `codex`**,在
-  `/root/.comate/.baidu-cx/baidu-cx-linux-amd64-*/bin/`,`which codex` 找不到。
-- **确认 agent 真的跑在容器里** —— 2026-08-25 有过本地 subagent 被误当成容器 agent、结果作废的先例。
+- **别指望容器内 agent** —— 容器里起不了 ducx/baidu-codex(2026-08-29 确认)。
+  执行主体是本机 subagent,经 `ssh` + `docker exec` 下发。
+- **确认命令真的落在容器里** —— 2026-08-25 有过本地 subagent 被误当成容器 agent、结果作废的先例。
+  用 `docker exec <容器> hostname` 之类的自证命令确认落点。
 - **不要内联长脚本** —— here-doc / 引号转义反复炸(`zsh: parse error`)。
   写到容器内临时文件再执行。
 - **`du` 在满盘机器上很慢** —— 限制 `-x -h -d 1`,超 30s 就跳过只留 `df`。
