@@ -12,18 +12,37 @@ description: 每个 subagent 必须回传的结构化交接日志格式(overnigh
 | 类型 | 存哪 | 理由 |
 |---|---|---|
 | 完整测试日志(pytest 输出、模拟器输出、编译日志) | **只存远端** `/workspace/<战役名>/logs/` | 动辄几十万行,拖回来没意义 |
-| 机器/容器/命令的**元信息 + 结果摘要** | **必须回传本机** `campaigns/<战役名>/handback/` | 用户 review 的对象;也是复现依据 |
+| 机器/容器/命令的**元信息 + 结果摘要** | **必须回传本机** `campaigns/<战役名>/logs/<机器>-<任务>/` | 用户 review 的对象;也是复现依据 |
+| **摘要级 run.log**(几十行的 pytest 汇总) | **拉回本机**,并双端 md5 比对 | 用户要能直接翻,不必再登机器 |
 
-远端日志不回传,但**必须回传它的绝对路径、行数、`md5sum`** —— 这样事后能定位、能验证没被改过。
+远端大日志不回传,但**必须回传它的绝对路径、行数、`md5sum`** —— 这样事后能定位、能验证没被改过。
 
-## 文件位置与命名
+## 文件位置与命名:**一任务一目录**
 
 ```
-campaigns/<战役名>/handback/<阶段>-<节点>-<分片>.md      # 一个 subagent 一份
-campaigns/<战役名>/handback/INDEX.md                     # 主 agent 汇总的索引表
+campaigns/<战役名>/
+├── INDEX.md                          # 主 agent 汇总索引表(必须有)
+└── logs/<机器>-<任务>/                # 一个 subagent 一个目录
+    ├── handback.md                   # 本文件定义的结构化回传
+    ├── run.log                       # 从容器拉回的 pytest 日志(md5 须与远端一致)
+    ├── <实际执行的脚本>                # 如 test_add.py / shard_03.sh
+    └── fetch.err                     # 拉取过程 stderr(0 字节 = 干净)
 ```
 
-例:`handback/P1-node53-multi_kernel.md`、`handback/P0-node115-precheck.md`。
+例:`logs/node53-multi_kernel/`、`logs/node115-precheck/`、`logs/devbox-agentA/`。
+
+**不要把所有 agent 的报告平铺在一个 handback/ 目录里** —— 一个 agent 的产出不止一份 md
+(还有 run.log、脚本、stderr),平铺会让"哪个文件属于哪个任务"迅速失控。
+一任务一目录,主 agent 只维护 INDEX.md。
+
+拉回日志的标准动作:
+```bash
+mkdir -p campaigns/<战役名>/logs/<机器>-<任务>
+ssh <节点> "docker exec <容器> bash -lc 'cat <远端日志>'" \
+  > campaigns/<战役名>/logs/<机器>-<任务>/run.log \
+  2> campaigns/<战役名>/logs/<机器>-<任务>/fetch.err
+md5 -q .../run.log        # macOS;与远端 md5sum 比对,不一致就是传输出了问题
+```
 
 ## 模板(subagent 照此填写)
 

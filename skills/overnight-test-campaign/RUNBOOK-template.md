@@ -147,7 +147,8 @@ pytest 结束时 stderr 打印的 `Kl5Top destructed` / `XpuSystem destructed` *
 **完整测试日志留在远端**(不回传,太大):
 `/workspace/<战役名>/logs/<分片名>.log`,用 `2>&1 | tee` 落盘。
 
-**但下列数据必须回传本机**,写成 `campaigns/<战役名>/handback/<阶段>-<节点>-<分片>.md`,
+**但下列数据必须回传本机**,交到**自己的任务目录**
+`campaigns/<战役名>/logs/<机器>-<任务>/handback.md`(一任务一目录,别平铺),
 **格式严格照 `HANDBACK-schema.md`**(用户要逐条 review):
 
 - 机器:ip、`hostname` 实际输出、根分区/数据盘剩余、`nproc`、load、同机他人任务
@@ -158,6 +159,11 @@ pytest 结束时 stderr 打印的 `Kl5Top destructed` / `XpuSystem destructed` *
 - 测试结果:pass/fail/skip 计数、单例平均耗时、失败用例清单
 - 远端日志的**绝对路径 + `wc -l` 行数 + `md5sum`**(让人事后能定位和验真)
 - 异常与偏离:任何和本 runbook 不一致的地方,没有就写"无"
+
+**同机还是分机?** 默认**一个 agent 一台机器**,分片跑不同子特性 —— 这才是多机并发。
+只有在专门验"并发隔离性/回传格式"时才让多个 agent 落同一台机器,
+且必须**各写自己的子目录**(`/workspace/<战役名>/<agent 名>/`)、互不读写对方目录。
+派发前在 prompt 里**写死每个 agent 的机器和目录**,不要让它自己挑,否则会全挤到同一台。
 
 纪律:
 - 数字**抄命令输出**,不估算不换算

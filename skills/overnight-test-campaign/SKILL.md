@@ -268,9 +268,11 @@ python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
 夜间任务要注意 8h 窗口:凌晨建的连接白天可能已过期。
 
 ### 审计
-所有 subagent 必须 `cd` 到同一个战役目录,并按 `HANDBACK-schema.md` 各交一份
-`handback/<阶段>-<节点>-<分片>.md`。主 agent 收齐后汇总 `handback/INDEX.md`,
+所有 subagent 必须 `cd` 到同一个战役目录,并按 `HANDBACK-schema.md` **一任务一目录**
+交付:`campaigns/<战役名>/logs/<机器>-<任务>/{handback.md, run.log, 脚本, fetch.err}`。
+主 agent 收齐后汇总 `campaigns/<战役名>/INDEX.md`,
 **缺哪份要点出来**,不能用"整体成功"盖过去。
+摘要级 run.log 要**拉回本机**并双端 md5 比对,让用户不必登机器就能翻。
 用户要 review 每一条实际下发的远端命令 —— 这是硬要求,不是可选项。
 
 ### 早上的交付
