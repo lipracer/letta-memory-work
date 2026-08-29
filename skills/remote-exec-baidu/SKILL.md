@@ -91,8 +91,14 @@ hostname / id -un / pwd 仍值得**记录进报告**留档,但**不作为门禁*
   `/klxlake`、其他用户目录、别人的容器**一律禁碰**(禁 stop/rm/exec)。**"盘满就顺手清"绝对不许,换机器。**
 - 路径里**不要写死用户名**,用 `$(id -un)`。宿主工作目录 `/ssd<N>/$(id -un)/<战役名>`,N 按各机最空盘挑。
   **各机可写的盘不一样**:node53 的 `/ssd2` 是 root 所有、写不进去,`/ssd4` 可写 —— 别拿别的机器的结论套。
-- `docker run` 默认**不要加 `--privileged`**(配 `--network host` 事故半径太大);
-  确实起不来再加,并在报告里写明"不加会失败"。
+- `docker run` **不需要 `--privileged`,也不需要 `--network host`**
+  (2026-08-29 node41 + node53 双机独立取证:默认 bridge + bind mount + `-w` 就能跑通功能模拟器,
+  3 passed,device 用例 call 2.4s 真跑)。默认用最小权限起容器:
+  ```bash
+  docker run -d --name <容器> -v /ssd<N>/$(id -un)/<战役名>:/workspace/<战役名> \
+             -w /workspace/<战役名> <镜像> sleep infinity
+  ```
+  真起不来再逐个加,并在报告里写明"不加会失败"及具体报错。
 - 容器内 `/root/.comate/.baidu-cx/*/bin/` 下的 `ducx`/`baidu-codex` **不在 PATH,起不来,不要启动它们**。
   执行主体是你自己(或本机 ducx),容器只是被 `docker exec` 操作的对象。
 
