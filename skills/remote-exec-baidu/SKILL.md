@@ -46,6 +46,15 @@ THOR(H100,172.19.53.15)有封装好的脚本:
   要计时就**把 pull 输出重定向到远端文件**,别靠 ssh stdout 回传;
   判断是否拉完用只读旁证:`docker images` 有 tag + image id/size + 盘用量增长 + 已无 pull 进程。
   (2026-08-29:没写这句,执行者连发 4 次同一条 pull。)
+- **node41 的出网 HTTPS 被 TLS 中间代理拦截,BOS / restore.sh 那套容器初始化在 node41 上跑不通**
+  (2026-08-29 取证:`x509: certificate is valid for wxtky02-p800-8nic-vd-node41, not bj.bcebos.com`;
+  `wget` 报自签名/SAN mismatch,加 `--no-check-certificate` 也是 rc=8;容器内预置 `bcecmd` 同样失败)。
+  后果:拿不到 ssh key → clone 内网仓 `Host key verification failed`。
+  **所以不要在 node41 上从零 clone 源码。** 优先复用机器上已有的 checkout
+  (宿主 `~/` 或长期容器 `chenlonglong01_m300_py312_torch212` 里),把源码**拷进**自己的工作目录再用。
+  真需要 clone 时换机器,并先验证该机能不能访问 BOS。
+- `Host key verification failed` 只是 known_hosts 缺条目,和凭据无关;
+  但它常常是**上游 ssh key 没配好**的下游症状,别只治它。
 - **并发任务必须各用自己的子目录。** 同一 campaign 派多个执行者时,
   宿主挂载目录用 `/ssd<N>/$(id -un)/<战役名>/<任务名>/`,不要让两个执行者共享一个目录 ——
   否则 `test_add.py` / `run.log` 这类同名产物会被互相覆盖
