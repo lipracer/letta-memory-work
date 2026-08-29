@@ -46,13 +46,25 @@ THOR(H100,172.19.53.15)有封装好的脚本:
   要计时就**把 pull 输出重定向到远端文件**,别靠 ssh stdout 回传;
   判断是否拉完用只读旁证:`docker images` 有 tag + image id/size + 盘用量增长 + 已无 pull 进程。
   (2026-08-29:没写这句,执行者连发 4 次同一条 pull。)
-- **node41 的出网 HTTPS 被 TLS 中间代理拦截,BOS / restore.sh 那套容器初始化在 node41 上跑不通**
-  (2026-08-29 取证:`x509: certificate is valid for wxtky02-p800-8nic-vd-node41, not bj.bcebos.com`;
-  `wget` 报自签名/SAN mismatch,加 `--no-check-certificate` 也是 rc=8;容器内预置 `bcecmd` 同样失败)。
-  后果:拿不到 ssh key → clone 内网仓 `Host key verification failed`。
-  **所以不要在 node41 上从零 clone 源码。** 优先复用机器上已有的 checkout
-  (宿主 `~/` 或长期容器 `chenlonglong01_m300_py312_torch212` 里),把源码**拷进**自己的工作目录再用。
-  真需要 clone 时换机器,并先验证该机能不能访问 BOS。
+- **node41 上 docker 默认 bridge 网络的出网 HTTPS 会被劫持,必须用 `--network host` 才能出网**
+  (2026-08-29 三方对照取证,`VERDICT=machine-wide` 那个初判是错的):
+  | 位置 | 结果 |
+  |---|---|
+  | 宿主机 | **通**,BOS 返正常的 `403 AccessDenied` |
+  | bridge 容器(172.17.0.2) | **被劫持** |
+  | `--network host` 容器 | **通**,与宿主一致 |
+  劫持者是这台机器上的 **IBM Storage Scale(GPFS)管理界面**:bridge 里
+  `bj.bcebos.com` 被解析到 **10.6.145.191:443**,握手拿到的是自签证书
+  `OU=gpfsgui, CN=wxtky02-p800-8nic-vd-node41`,加 `-k` 后返回的 body 是
+  `<title>Log In - IBM Storage Scale</title>` 的 HTML 登录页 —— 不是 BOS 响应。
+  两边 proxy 环境变量都为空(`env | grep -i proxy` rc=1),**不是 proxy 配置问题**,
+  是 bridge 的 DNS/路由把公网域名指向了本机 gpfsgui 服务。
+  → **所以 node41 上凡是需要出网的容器(BOS/restore.sh 初始化、pip、clone)一律加 `--network host`。**
+  只跑测试、不出网的容器仍用默认 bridge(最小权限)。
+- 症状识别:`x509: certificate is valid for <本机名>, not <目标域名>` 或
+  证书 `OU=gpfsgui` = **踩到 bridge 劫持**,不是"机器没网",更不是证书库坏了。
+  加 `--no-check-certificate` / `-k` **治不了**,只会把代理的登录页当成正文拿回来
+  (rc 仍非 0,或拿到一堆 HTML) —— 遇到这个先换 `--network host` 重试,别去改证书库。
 - `Host key verification failed` 只是 known_hosts 缺条目,和凭据无关;
   但它常常是**上游 ssh key 没配好**的下游症状,别只治它。
 - **并发任务必须各用自己的子目录。** 同一 campaign 派多个执行者时,
@@ -108,7 +120,7 @@ hostname / id -un / pwd 仍值得**记录进报告**留档,但**不作为门禁*
   `/klxlake`、其他用户目录、别人的容器**一律禁碰**(禁 stop/rm/exec)。**"盘满就顺手清"绝对不许,换机器。**
 - 路径里**不要写死用户名**,用 `$(id -un)`。宿主工作目录 `/ssd<N>/$(id -un)/<战役名>`,N 按各机最空盘挑。
   **各机可写的盘不一样**:node53 的 `/ssd2` 是 root 所有、写不进去,`/ssd4` 可写 —— 别拿别的机器的结论套。
-- `docker run` **不需要 `--privileged`,也不需要 `--network host`**
+- `docker run` **跑测试不需要 `--privileged`,也不需要 `--network host`**
   (2026-08-29 node41 + node53 双机独立取证:默认 bridge + bind mount + `-w` 就能跑通功能模拟器,
   3 passed,device 用例 call 2.4s 真跑)。默认用最小权限起容器:
   ```bash
@@ -116,6 +128,8 @@ hostname / id -un / pwd 仍值得**记录进报告**留档,但**不作为门禁*
              -w /workspace/<战役名> <镜像> sleep infinity
   ```
   真起不来再逐个加,并在报告里写明"不加会失败"及具体报错。
+  **但容器要出网就必须加 `--network host`**(node41 bridge 会被 gpfsgui 劫持,见上文);
+  需要初始化/pip/clone 的容器加它,只跑测试的不加。
 - 容器内 `/root/.comate/.baidu-cx/*/bin/` 下的 `ducx`/`baidu-codex` **不在 PATH,起不来,不要启动它们**。
   执行主体是你自己(或本机 ducx),容器只是被 `docker exec` 操作的对象。
 
