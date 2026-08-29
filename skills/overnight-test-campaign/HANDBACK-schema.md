@@ -48,6 +48,8 @@ agent: <subagent 标识>    开始: <ISO 时间>    结束: <ISO 时间>
 - image: <registry/image:tag>   ← 抄实际 tag,不许写"最新"
 - container id: <短 id>
 - 落点自证: `docker exec <name> bash -lc 'hostname; id -un; pwd'` → <原始输出三行>
+- **conda 环境自证**: activate 后 `which python; python -V; python -c "import torch; print(torch.__version__)"`
+  → <原始三行;预期 .../envs/python312_torch212/bin/python / 3.12.13 / 2.12.0a0+git0382020>
 - 环境初始化(BOS/ssh key): <已跑,restore.sh rc=0 / 未跑,原因>
 
 ## 容器内执行的命令(逐条,不省略)

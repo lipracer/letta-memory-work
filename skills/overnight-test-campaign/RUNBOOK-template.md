@@ -49,6 +49,39 @@ socket 落在 `~/.ssh/sessions/`。**首次连某台会走一次 relay 指纹认
 <!-- 若本阶段需要写操作(建容器/跑测试),在此明确列出允许的命令类型,
      并说明为何白名单工具不适用、改用什么通路 -->
 
+## 进容器后第一件事:activate 统一环境
+
+容器 PATH 上的 `python` 是 miniconda base(3.13.13,**没有 torch**)。
+torch 在 conda env **`python312_torch212`** 里。**每条命令都要先 activate:**
+
+```bash
+source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212
+```
+
+`docker exec ... bash -lc` **每次都是全新 shell**,上一条的 activate 不保留 ——
+所以 activate 必须跟在**每一条**命令前面,不能只在开头做一次。
+
+建议做法:建容器后在工作目录写一个 `env.sh`,之后每条命令 `source` 它:
+
+```bash
+# /workspace/<战役名>/env.sh
+source /root/miniconda/etc/profile.d/conda.sh
+conda activate python312_torch212
+export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE
+```
+
+之后统一这样下发:
+```bash
+ssh <ip> "docker exec <容器名> bash -lc 'source /workspace/<战役名>/env.sh && <命令>'"
+```
+
+**验证 activate 生效**(activate 之后第一条就跑这个):
+```bash
+which python; python -V; python -c "import torch; print(torch.__version__)"
+```
+预期:`.../envs/python312_torch212/bin/python` / `Python 3.12.13` / `2.12.0a0+git0382020`。
+**对不上就停下来报告,不要继续跑测试。**
+
 ## 容器内执行
 
 **你(本机 subagent)就是执行者。容器里起不了 ducx/baidu-codex,不要尝试。**
@@ -71,9 +104,8 @@ ssh <ip> "docker exec <容器名> bash -lc 'hostname; id -un; pwd'"
 本机生成脚本 → `base64 -i <file>`(macOS **不支持 `-w0`**)→ 容器内
 `echo '<b64>' | base64 -d > <目标>` → 双端 `md5sum` 比对确认写入完整。
 
-**跑 python 一律用 `$PYTHON`,不要用裸 `python`** —— 容器 PATH 上的 `python` 是
-miniconda base(3.13.13,**没有 torch**);torch 在 `$PYTHON`
-(`/root/miniconda/envs/python312_torch212/bin/python`,3.12.13)。
+**跑 python 前必须 activate 统一环境**(见上文「进容器后第一件事」),
+不要用裸 `python` —— PATH 上那个是 miniconda base 3.13.13,**没有 torch**。
 写 device 判断用 `torch.cuda.is_available()`,**不要用 `torch.xpu.is_available()`**
 (功能模拟器下后者为 False,会让用例被误 skip)。
 pytest 结束时 stderr 打印的 `Kl5Top destructed` / `XpuSystem destructed` **不是报错**。

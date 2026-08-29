@@ -109,25 +109,46 @@ docker pull iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12
 其他默认环境变量:`XCUDA_HOME=/usr/local/xcuda/`、`TRITON_ENABLE_XCN_BACKEND=true`,
 torch / triton 均已预装 whl。
 
-### ⚠️ 容器里的 `python` **没有 torch**(2026-08-29 双 agent 独立实测)
+### ⚠️ 进容器后**第一件事:activate 统一环境**(2026-08-29 双 agent 独立实测)
 
 **这是最容易让整夜任务在第一跳全军覆没的坑。** PATH 上的 `python` 是
 `/root/miniconda/bin/python`(miniconda base,**Python 3.13.13,无 torch**),
 `import torch` 直接 `ModuleNotFoundError`。
 
 torch `2.12.0a0+git0382020` 装在 conda env **`python312_torch212`**(Python 3.12.13,pytest 7.3.2)。
-两种进入方式,都实测可用:
+
+**统一约定:每条进容器的命令都先 activate 这个环境,再干活。**
 
 ```bash
-# 方式一(推荐,无状态):用容器预设的 $PYTHON 变量
-$PYTHON -m pytest test_xxx.py -v          # $PYTHON=/root/miniconda/envs/python312_torch212/bin/python
-                                          # 另有 $PIP 指向同环境 pip
-# 方式二:显式 activate
-source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212
+CONDA_ENV=python312_torch212      # 本战役统一环境名,写成变量,别散落在各处
+source /root/miniconda/etc/profile.d/conda.sh && conda activate $CONDA_ENV
 python -m pytest test_xxx.py -v
 ```
 
-**runbook / prompt 里一律写 `$PYTHON`,不要写裸 `python`。**
+**关键机制**:`docker exec ... bash -lc '<命令>'` 每次都是**全新 shell**,
+上一条的 activate **不会保留到下一条**。所以 activate 必须**跟在每条命令前面**,
+不能"先 activate 一次,后面接着用":
+
+```bash
+# 正确:每条自带 activate
+ssh <ip> "docker exec <容器> bash -lc 'source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212 && python -m pytest ...'"
+```
+
+嫌每条都拼太长,就在容器工作目录里放一个 `env.sh`,每条命令 `source` 它:
+```bash
+# /workspace/<战役名>/env.sh —— 建容器后写一次,之后每条命令 source 它
+source /root/miniconda/etc/profile.d/conda.sh
+conda activate python312_torch212
+export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE
+```
+用法:`bash -lc 'source /workspace/<战役名>/env.sh && python -m pytest ...'`
+
+**备用等价写法**:容器预设了 `$PYTHON`(= 该 env 的 python)和 `$PIP`,
+`$PYTHON -m pytest ...` 免 activate 也能跑通(A agent 实测)。
+但**统一走 activate**,因为它对子进程、`python`/`pip`/`pytest` 各种入口都一致生效,
+不会出现"pytest 用了对的 python、但测试内部 subprocess 调了错的 python"这类难查问题。
+
+**runbook / prompt 里一律写 activate(或 source env.sh),不要写裸 `python`。**
 
 ### 加速器接口:XPU 模拟器暴露为 cuda API(2026-08-29 实测)
 

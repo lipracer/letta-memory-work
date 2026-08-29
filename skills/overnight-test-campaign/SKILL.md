@@ -203,12 +203,15 @@ autotune 场景推荐 `test_multi_kernel.py`(14 个用例,H2 即可,不需要 CU
 
 ```bash
 cd <repo>/test/inductor    # xTorch 在容器内 /workspace/m300/torch_feature/xTorch
+source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212
 export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE
-$PYTHON -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
+python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
 ```
 
-**注意用 `$PYTHON`,不是裸 `python`** —— 容器 PATH 上的 `python` 是 miniconda base(3.13,无 torch),
-详见 `machines.md`「容器里的 python 没有 torch」。日志落**工作目录**,别落 `/tmp`。
+**进容器必须先 activate `python312_torch212`** —— 裸 `python` 是 miniconda base(3.13,无 torch)。
+`docker exec bash -lc` 每条都是新 shell,activate 不跨命令保留,
+所以每条命令都要带上(或 `source` 工作目录里的 `env.sh`)。详见 `machines.md`。
+日志落**工作目录**,别落 `/tmp`。
 
 **P1 必须产出这四个数,拿不到就不许进 P2:**
 
@@ -289,9 +292,11 @@ $PYTHON -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
   先跑 P1 第 3 步。
 - **凭据不落盘** —— 初始化用的 BOS AK/SK 在 KU 文档明文里,现场读、用完不写进任何文件、
   不进日志、不进 subagent 的 prompt。
-- **裸 `python` 没有 torch** —— 容器 PATH 上是 miniconda base(3.13,无 torch)。
-  一律用 `$PYTHON`(或先 `conda activate python312_torch212`)。这条不做,整夜任务会在
-  第一跳全片 `ModuleNotFoundError`。2026-08-29 双 agent 独立踩到同一处。
+- **没 activate 就跑 python** —— 容器 PATH 上是 miniconda base(3.13,无 torch)。
+  进容器**第一件事** `source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212`。
+  且 `docker exec bash -lc` **每条都是新 shell,activate 不跨命令保留** —— 每条都要带,
+  或 `source` 工作目录里的 `env.sh`。这条不做,整夜任务会在第一跳全片 `ModuleNotFoundError`。
+  2026-08-29 双 agent 独立踩到同一处。
 - **用 `torch.xpu.is_available()` 当 device 门禁** —— 它在功能模拟器下是 **False**,
   真正可用的是 `torch.cuda.is_available()`(模拟器经 cuda 接口暴露)。判错会跑出一片假绿的全 skip。
 - **把模拟器析构日志当报错** —— pytest 结束后 stderr 打印 `Kl5Top destructed` /
