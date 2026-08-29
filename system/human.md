@@ -57,6 +57,12 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 ## 大任务派发策略(2026-08-24 与用户约定)
 - 用户问过"大任务要不要拆/超长文档怎么传给 agent"。已答并记住:先读再派,但只读最小量;环境背景(容器/代码位置/flag)由我消化编进 prompt,agent 的领域代码让它自己读。超长文档三种传法(推荐排序):①放到 agent 可见路径(`/workspace`)让它自己读,最省 token;②我读+摘要转述成干净 prompt;③分段硬塞给 prompt(不推荐,易断上下文)。涉及容器内 agent 时最优 = docker cp 文档进 /workspace + `dev-agent "读 /workspace/xxx,然后执行 X"`。
 
+## 夜间远端测试战役(2026-08-28 起沉淀为可复用流程)
+用户要做 M300 PyTorch **autotune**(torch.compile,6 个子特性 ~228 用例)的夜间批量测试:委托 agent 登录环境 → 体检磁盘 → 拉镜像建容器 → 搭环境 → 调度分片跑测试。**该套测试没有统一 runner,必须由 agent 统一调度分配。** 用户明确要求(2026-08-28):**先不跑,先把工作流定义清楚、沉淀成可复用流程**;并认同"先跑通一个例子,后面就好办"。
+流程已固化为技能 `overnight-test-campaign`(四阶段硬门禁:P0 选机体检 → P1 打通单例(人在场)→ P2 定分片 → P3 夜间铺开),机器/镜像/初始化事实在其 `machines.md`,subagent 手册模板在 `RUNBOOK-template.md`。**做这类任务先加载该技能,不要凭记忆复述细节。**
+两个决定性事实:①M300 官方镜像默认跑**功能模拟器**(`XPU_SIMULATOR_MODE=1`),不需要真卡不用锁卡,瓶颈是 CPU/内存,耗时不能拿 GPU 经验外推;②容器建好后**必须**跑 KU《常用命令》`iLP-gei3L_-MnK` 的环境初始化脚本(装 bcecmd → 从 BOS 拉 boot/ → `restore.sh`)才会有网盘和用户 ssh key,否则 clone 内网仓库直接失败。该文档正文有明文长期凭据(BOS AK/SK、GitHub token、机器密码)——现场读取,不落盘不进 prompt;已建议用户轮换。
+镜像权威出处:KU《M300软件产出镜像用户手册》`w_NznaMuJTnLdD`,当前 v2 `iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12:20260714_27`。
+
 ## GPU 机器与测试环境
 - 美研 GPU 机器：ALCHEMY（172.19.53.18，A100/3090/A10/A30）、THANOS（172.19.53.5，8×A100 SXM）、ATOM（172.19.53.2，A100/A10/A30）、THOR（172.19.53.15，H100）。使用前需在 5794977 群锁卡，避免从国内大量拷数据。
 - THOR 的现有自动化通路已验证；ALCHEMY/THANOS/ATOM 的登录链路仍需实际验证。ATOM 在出现 no kex algorithm 时，记录的备用方式是先登录 THANOS 再跳转。
