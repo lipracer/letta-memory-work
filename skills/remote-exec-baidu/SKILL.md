@@ -72,6 +72,15 @@ THOR(H100,172.19.53.15)有封装好的脚本:
   否则 `test_add.py` / `run.log` 这类同名产物会被互相覆盖
   (2026-08-29 真实发生:后到的执行者覆盖了并行 session 的产物,靠它自己主动备份才没丢)。
   docker 会合并并发 pull,所以并行任务测出来的"pull 耗时"也不可信。
+- **干净镜像里没有 Triton**(2026-08-29 取证):`torch._inductor.exc.TritonMissing:
+  Cannot find a working triton installation`。**凡是走 inductor 生成 kernel 的测试会整片 fail**
+  (`test_multi_kernel.py` 19 例 → 0 passed / 17 failed / 2 skipped)。
+  这不是环境搭错,是镜像本身不带 —— 要跑 inductor 类测试**必须先解决 Triton**,
+  否则夜间铺开只会拿到一片同因失败。派活前先问:这批测试需不需要 Triton。
+- **不要在 PyTorch 源码树根目录下跑 pytest**:源码里的 `torch/` 目录会遮蔽已安装的 torch 包,
+  报 `ModuleNotFoundError: torch.version`(2026-08-29 实测)。
+  正确做法:`cd` 到源码树**外面**,用测试文件的绝对/相对路径跑
+  (如 `cd <工作目录> && python -m pytest xTorch/test/inductor/xxx.py`)。
 - **没有 pytest-xdist**(2026-08-29 取证):干净镜像里没装,`pytest -n` 不可用。
   旧容器 `chenlonglong01_m300_py312_torch212` 里的 xdist-3.8.0 是后装的。
   分片要靠**多进程各跑各的文件**,别指望 `-n`。
