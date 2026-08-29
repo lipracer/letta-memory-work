@@ -68,6 +68,11 @@ agent: <subagent 标识>    开始: <ISO 时间>    结束: <ISO 时间>
 
 ## 异常与偏离
 <跑的过程中任何与 runbook 不一致的地方、重试、跳过、临时变通。没有就写"无"。>
+
+## 写操作自查(必填)
+- 宿主机上执行过的写操作: <逐条列出;应只有 docker pull/run/exec 和 mkdir 工作目录>
+- 容器内写过 `/workspace` 之外的路径吗: <否 / 是 + 具体路径 + 原因>
+- 碰过 `/klxlake` 或其他用户目录吗: <否 / 是 —— 是则必须解释>
 ```
 
 ## 填写纪律
@@ -78,6 +83,8 @@ agent: <subagent 标识>    开始: <ISO 时间>    结束: <ISO 时间>
 - **凭据一律 `<REDACTED>`** —— BOS AK/SK、token、密码绝不进 handback。
   涉及凭据的命令写成 `cat > ~/.go-bcecli/credentials <<EOF  # <REDACTED>`。
 - **失败也要完整记录** —— 失败的 handback 比成功的更有价值。不要因为没跑成就不写。
+- **写操作自查必填** —— 宿主机应只有 docker pull/run/exec + 建工作目录;
+  容器内应只写过 `/workspace`。有越界必须如实写出来,隐瞒比越界更严重。
 - **不许只交一句"完成了"** —— 没有这份文件就等于没干活。
 
 ## 主 agent 的责任
