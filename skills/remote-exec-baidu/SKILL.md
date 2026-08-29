@@ -42,6 +42,10 @@ THOR(H100,172.19.53.15)有封装好的脚本:
 - 本机 macOS 的 zsh **没有 `timeout` 命令**,别用它包 ssh。
 - 交互式 ssh 我无法操作,只能用**一次性命令模式**(`ssh host '...'`)。
 - `docker pull` 26GB 镜像要**十几分钟**,不要以为卡死就重试。
+  (2026-08-29:没写这句,执行者连发 4 次同一条 pull。)
+- **没有 pytest-xdist**(2026-08-29 取证):干净镜像里没装,`pytest -n` 不可用。
+  旧容器 `chenlonglong01_m300_py312_torch212` 里的 xdist-3.8.0 是后装的。
+  分片要靠**多进程各跑各的文件**,别指望 `-n`。
 - 一条命令失败**最多重试一次**,再失败换方法或停下报告。
 
 ## docker exec 进 M300 容器
@@ -57,8 +61,23 @@ source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch2
 自证(对不上就停):`/root/miniconda/envs/python312_torch212/bin/python`、`3.12.13`、torch `2.12.0a0+git0382020`。
 裸 `python` 是 miniconda base 3.13.13,**没有 torch**。
 
-**落点自证**:进容器第一条命令必须 `hostname; id -un; pwd`,确认真在目标机器的容器里。
-(2026-08-25 出过事故:本机 subagent 被当成容器内 agent,整轮工作作废。)
+### 落点自证:用挂载目录的哨兵文件,**不要用 hostname**
+
+必须证明"我真在目标机器的容器里",否则整轮工作作废
+(2026-08-25 事故:本机 subagent 被当成容器内 agent;2026-08-29 事故:自证规则本身误判)。
+
+**正确做法 —— 哨兵文件**(对 host / bridge 网络都成立,顺带证明挂载真的通了):
+```bash
+TOKEN="$(date +%s)-$RANDOM"
+ssh <节点> "echo $TOKEN > /ssd<N>/\$(id -un)/<战役名>/.sentinel"      # 宿主写
+ssh <节点> "docker exec <容器> bash -lc 'cat /workspace/<战役名>/.sentinel'"  # 容器读
+# 读回的串 == TOKEN 才算落点正确
+```
+
+**`hostname` 不能当凭据。** 它只在 `--network host` 时才显示宿主名;默认 bridge 网络下返回的是
+容器 id,看起来"不像目标机器",会把好环境误判成落错地方。同理 `pwd` 也不可靠 —— 复用已存在的
+容器时 `-w` 不生效,pwd 可能是 `/home`。
+hostname / id -un / pwd 仍值得**记录进报告**留档,但**不作为门禁**。
 
 ## 硬规矩(违反即作废)
 
