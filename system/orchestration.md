@@ -33,6 +33,18 @@ description: My role boundary: I orchestrate, executors do the work. What belong
 
 执行者无记忆,所以边界必须写死;但执行者有脑子,所以步骤不用写。
 
+# skill 文件是给执行者的简报,不只是我的记忆(2026-08-30 向用户讲清)
+
+执行者(ducx / subagent)**读不到我的上下文,也没有记忆**。但它能读磁盘。
+所以派发时**不抄内容,只给路径**:PROMPT.md 里写一行"先读 `<memory>/skills/remote-exec-baidu/SKILL.md`"。
+收益:我改一次那个文件,**下一个执行者自动拿到最新版** —— 不用重写 prompt,也不用记住哪条改过。
+因此 `remote-exec-baidu/SKILL.md`、`boundaries.md`、`machines.md` 有**双重身份**,
+写它们的时候要按"无状态陌生人能照着做"的标准写。
+
+**skill 文件要按"什么时候需要读它"切分,不按主题。** 一个 28KB 的 SKILL.md 不管做哪个阶段
+都得整块吃掉,还会把未解决的卡点埋进几百行里。正确形态:SKILL.md 瘦成入口索引(铁律 +
+执行模型 + 路由表),细节按阶段分文件,**未解决的卡点单独成文件并在入口设硬门禁指向它**。
+
 # 相关
 - 远端连接与硬规矩:`skills/remote-exec-baidu/SKILL.md`(也是给执行者的简报文件)
 - 夜间战役流程:`skills/overnight-test-campaign/`

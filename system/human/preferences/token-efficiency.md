@@ -25,10 +25,10 @@ description: User's preference on token efficiency: act decisively, don't over-e
 - **本机 ducx 派发**(无状态、可并发、输出不进我上下文):
     `ducx exec -m <model> --skip-git-repo-check -s danger-full-access "$(cat PROMPT.md)" > logs/<任务>/ducx.log 2>&1`
     ducx 跑在本机,能用我的 ssh config / relay-cli,自己 `ssh <节点>` + `docker exec` 下发。**stdout 重定向进任务目录,我不读它**,只读它写出来的 `handback.md`。
-  - 因为 ducx 无记忆,PROMPT.md 里必须写全:机器/容器/目录**写死**、conda 自证、CUDA 口径、写权限边界、handback 格式与落盘路径。
+  - 因为 ducx 无记忆,PROMPT.md 里必须**写死这一轮独有、猜不到的事实**:机器/容器/run 目录、禁碰清单、交付格式与落盘路径。**通用背景约束(连接方式、conda 自证、CUDA 口径、写权限边界)不要抄进 prompt** —— 给它 skill 文件路径让它自己读(见 [[system/orchestration.md]]),这样我改一次 skill 全部执行者就跟着更新。
   - Letta subagent 只在 ducx 不可用时兜底(它也有独立上下文,但比 ducx 贵、且我容易顺手读它的长篇回执)。
   - 容器内**起不了** ducx/baidu-codex(二进制在 `/root/.comate/.baidu-cx/*/bin/` 但不在 PATH),`dev-agent` 封装依赖它,同样不可用 —— 所以 ducx 跑在**本机或宿主机**,容器只是被 `docker exec` 操作的对象。
   - 收 handback 时**只读我要汇报的那几行**(结论、计数、缺口),不要 `cat` 整份报告进上下文。
 - 当用户要求把事情迁到容器/远端继续时,先把当前要做的事情写进记忆并同步到远端,再开始新的执行链路。
 
-记忆占用认知(2026-08-28 复核):每轮必定注入上下文的核心记忆主体是 `system/` 下文件——`persona.md` + `human.md` + 几个偏好文件,合计约 ~31KB(会随记录增长,要报数就现场 `wc -c system/persona.md system/human.md system/human/preferences/*.md`,别背旧数字)。磁盘上大头是 git 历史,不占上下文。`onboarding.md` 早已删除(用户已完全 onboarded),不要再提它。`reference/`、`skills/` 等非 system 文件不每轮注入,只在文件树里露路径和 description,任务相关时才 Read。用户问"记忆占比/容量/上限"这类自查时,分层回答:物理磁盘占用 vs 真正每轮注入的核心记忆块 vs 上下文窗口上限(当前 agent 128K token、单次回复 32K),不要把三者混为一谈。
+记忆占用认知(2026-08-30 复核):每轮必定注入上下文的核心记忆主体是 `system/` 下文件——`persona.md` + `human.md` + `orchestration.md` + 几个偏好文件,合计约 **~46KB**(会随记录增长,要报数就现场 `wc -c system/persona.md system/human.md system/orchestration.md system/human/preferences/*.md`,别背旧数字)。磁盘上大头是 git 历史,不占上下文。`onboarding.md` 早已删除(用户已完全 onboarded),不要再提它。`reference/`、`skills/` 等非 system 文件不每轮注入,只在文件树里露路径和 description,任务相关时才 Read。用户问"记忆占比/容量/上限"这类自查时,分层回答:物理磁盘占用 vs 真正每轮注入的核心记忆块 vs 上下文窗口上限(当前 agent 128K token、单次回复 32K),不要把三者混为一谈。
