@@ -62,9 +62,9 @@ agent 遇到问题 → 自己能判断的,自己处理并记录
 
 | 方向 | 做法 |
 |---|---|
-| **agent → 我** | 判断不了时写 `NEEDS_DECISION.md`(写清:卡在哪、它的两个候选、缺什么信息),然后**继续跑别的**或退出,不要空转等我 |
-| **我 → agent** | 我写 `DECISION.md`;agent 在循环每轮开头读一次,有就照办 |
-| **我怎么知道** | 挂 Monitor 盯 `NEEDS_DECISION.md` 出现;**哨兵必须能区分本轮产物**(旧文件先改名 `*.STALE-*.md`,否则 39ms 假报完成 —— 真踩过) |
+| **agent → 我** | 判断不了时写 `<run_dir>/NEEDS_DECISION.md`(写清:卡在哪、它的两个候选、缺什么信息),然后**继续跑别的**或退出,不要空转等我 |
+| **我 → agent** | 我写 `<run_dir>/DECISION.md`;agent 在循环每轮开头读一次,有就照办 |
+| **我怎么知道** | 挂 Monitor 盯 `<run_dir>/NEEDS_DECISION.md` 出现。**run 目录是新建的,所以文件存在 ⟺ 本轮真求助** —— 判据就这么简单(复用目录才需要改名防残留,已废弃) |
 
 这条要写进给执行者的 PROMPT:**"你判断不了,就写 NEEDS_DECISION.md,别硬扛也别空等。"**
 
@@ -164,8 +164,9 @@ P3 铺开前必须先定跨天续认证的办法(候选:零点后再启动、睡
 夜间任务要注意 8h 窗口:凌晨建的连接白天可能已过期。
 
 ### 审计
-所有 subagent 必须 `cd` 到同一个战役目录,并按 `HANDBACK-schema.md` **一任务一目录**
-交付:`campaigns/<战役名>/logs/<机器>-<任务>/{handback.md, run.log, 脚本, fetch.err}`。
+每个执行者有**自己的 run 目录**,按 `HANDBACK-schema.md` 的布局
+交付:`campaigns/<战役名>/runs/<时间戳>-<机器>-<任务>/{PROMPT.md, handback.md, run.log, 脚本, fetch.err}`。
+**一次派发一个新目录,不复用**(隔离靠路径,见 `HANDBACK-schema.md`)。
 主 agent 收齐后汇总 `campaigns/<战役名>/INDEX.md`,
 **缺哪份要点出来**,不能用"整体成功"盖过去。
 摘要级 run.log 要**拉回本机**并双端 md5 比对,让用户不必登机器就能翻。

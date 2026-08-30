@@ -4,7 +4,8 @@ description: 交给 subagent 的自包含执行手册模板,照抄后按战役�
 
 # RUNBOOK 模板
 
-**用法**:复制到 `campaigns/<战役名>/RUNBOOK.md`,替换 `<...>` 占位。
+**用法**:复制到 `campaigns/<战役名>/runs/<时间戳>-<机器>-<任务>/RUNBOOK.md`,替换 `<...>` 占位。
+执行者的工作目录 = 它自己那个 run 目录,所有产物写在里面,不要往外写。
 原则:subagent 读完这一份就能干活,**不需要向主 agent 追问任何登录方式**。
 登录链路知识写在这里,不写进 prompt —— 这样不占主 agent 上下文,换机器也只改这一份。
 
@@ -148,7 +149,7 @@ pytest 结束时 stderr 打印的 `Kl5Top destructed` / `XpuSystem destructed` *
 `/workspace/<战役名>/logs/<分片名>.log`,用 `2>&1 | tee` 落盘。
 
 **但下列数据必须回传本机**,交到**自己的任务目录**
-`campaigns/<战役名>/logs/<机器>-<任务>/handback.md`(一任务一目录,别平铺),
+`campaigns/<战役名>/runs/<时间戳>-<机器>-<任务>/handback.md`(一次派发一个新目录,不复用),
 **格式严格照 `HANDBACK-schema.md`**(用户要逐条 review):
 
 - 机器:ip、`hostname` 实际输出、根分区/数据盘剩余、`nproc`、load、同机他人任务

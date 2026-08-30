@@ -116,7 +116,7 @@ P1 一定要人在场。
 | `machines.md` | 需要机器/镜像/容器参数时(**也直接给执行者读**) |
 | `RUNBOOK-template.md` | 给执行者的自包含手册模板 |
 | `HANDBACK-schema.md` | 定义执行者必须回传的结构化格式 |
-| `campaigns/` | 每次战役的分片、基线、handback、报告 |
+| `campaigns/` | 每次战役:`runs/<时间戳>-<机器>-<任务>/` 一次派发一个新目录(不复用),外加 INDEX.md |
 
 远端连接方式、conda 自证、CUDA 口径 → 另一个技能 `remote-exec-baidu/SKILL.md`
 (**那份也是给无状态执行者的简报,派活时把路径给它,不要抄进 prompt**)。
