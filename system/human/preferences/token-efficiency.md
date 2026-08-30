@@ -12,7 +12,11 @@ description: User's preference on token efficiency: act decisively, don't over-e
 
 - **我只统筹,不下场。执行主体优先 `ducx`**(2026-08-29 用户强反馈:「任务也是要给 ducx 跑啊,你只管统筹啊,探路的事情都不需要你,我不想污染你的记忆」)。
   - **探路也算任务**:`df`/`docker ps`/`docker images`/试写权限这类侦查,**一律连同正式任务一起交给执行者**。我自己 ssh 去探,原始输出(磁盘表、几十个容器名、逐条命令表)会整片灌进我的上下文 —— 这就是污染记忆,是被明确禁止的。
-  - **本机 ducx 派发**(无状态、可并发、输出不进我上下文):
+  - **ducx 是单向的(2026-08-30 实测)**:`ducx queue --thread <sid> --message` 对 `exec` 起的 session **无效** ——
+  消息只写进 `~/.baidu-cx/queue_1.sqlite` 的 `queued_items` 表,executor 不消费(等了 10+ 轮心跳仍在)。
+  `queue` 只服务交互式 `resume` session。验证后记得删那行,否则污染下次同 thread 会话。
+  所以**回程只能用文件信箱**:执行者判断不了写 `NEEDS_DECISION.md`,我写 `DECISION.md`,我挂 Monitor 盯文件出现。
+- **本机 ducx 派发**(无状态、可并发、输出不进我上下文):
     `ducx exec -m <model> --skip-git-repo-check -s danger-full-access "$(cat PROMPT.md)" > logs/<任务>/ducx.log 2>&1`
     ducx 跑在本机,能用我的 ssh config / relay-cli,自己 `ssh <节点>` + `docker exec` 下发。**stdout 重定向进任务目录,我不读它**,只读它写出来的 `handback.md`。
   - 因为 ducx 无记忆,PROMPT.md 里必须写全:机器/容器/目录**写死**、conda 自证、CUDA 口径、写权限边界、handback 格式与落盘路径。
