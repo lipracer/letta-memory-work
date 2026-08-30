@@ -58,6 +58,17 @@ description: 夜间测试战役踩过的常见坑与规避方式(overnight-test-
 目录是新建的 ⟹ 文件存在 ⟺ 本轮产物。改名 `*.STALE-*` 那套 hack 已废弃。
 布局见 `HANDBACK-schema.md`。
 
+### 哨兵自身还有两种失效方式(2026-08-30 实测)
+
+- **Monitor 的 `timeout` 参数不生效** —— 传 `timeout: 900000` 或 `3600000`,回执照样是
+  `timeout 300000ms`,**5 分钟就断**。夜间任务的哨兵一律用 **`persistent: true`**
+  (正确回执长这样:`persistent — runs until TaskStop or session end`),
+  否则派出去的活跑到一半就没人看着了。
+- **只盯"成功"会漏掉"根本没起来"** —— 哨兵至少要覆盖三种结局:
+  ① `handback.md` 出现 = 完成;② `NEEDS_DECISION.md` 出现 = 求助;
+  ③ **执行者进程已消失、两个文件都没有 = 派发失败**。
+  **静默不等于在跑**:ducx 在 ssh 阶段就死过,而只盯成功文件的哨兵完全无感。
+
 
 ## 环境不闭环会伪装成"测试红",而不是报环境错(2026-08-30 实证)
 

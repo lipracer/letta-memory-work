@@ -110,7 +110,7 @@ agent 遇到问题 → 自己能判断的,自己处理并记录
 |---|---|
 | **agent → 我** | 判断不了时写 `<run_dir>/NEEDS_DECISION.md`(写清:卡在哪、它的两个候选、缺什么信息),然后**继续跑别的**或退出,不要空转等我 |
 | **我 → agent** | 我写 `<run_dir>/DECISION.md`;agent 在循环每轮开头读一次,有就照办 |
-| **我怎么知道** | 挂 Monitor 盯 `<run_dir>/NEEDS_DECISION.md` 出现。**run 目录是新建的,所以文件存在 ⟺ 本轮真求助** —— 判据就这么简单(复用目录才需要改名防残留,已废弃) |
+| **我怎么知道** | 挂 Monitor 盯 `<run_dir>/NEEDS_DECISION.md` 出现。**run 目录是新建的,所以文件存在 ⟺ 本轮真求助** —— 判据就这么简单(复用目录才需要改名防残留,已废弃)。哨兵必须 `persistent: true`,且同时覆盖"执行者已死、两个文件都没有"这第三种结局 —— 见 `pitfalls.md` |
 
 这条要写进给执行者的 PROMPT:**"你判断不了,就写 NEEDS_DECISION.md,别硬扛也别空等。"**
 

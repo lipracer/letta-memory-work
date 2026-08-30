@@ -11,3 +11,9 @@ description: Hard rule: never omit Bash description param; never retry a failed 
 3. 刷屏本身就是对用户信任的伤害，宁可少调用、慢回答。
 4. 探测别人的工具时，**别静默改用户的全局配置**。为验证行为不得不改(如 `ducc config model` 是全局有状态的)，必须:先记下原值 → 改 → 验证 → **立刻改回** → 在回复里明说改过什么。改前若拿不到原值，先说明再动。
 5. Edit 的 old_string 匹配失败时，不要凭记忆猜措辞反复试(例:把"远端代码库项目"记成"远程...")，先重新读该文件抄原文。
+6. **前台 `sleep` 是被 harness 禁的**(2026-08-30 一晚踩了 4 次同一个错)。等待一律用
+   `Bash run_in_background` + 一个条件满足就退出的循环,或用 `Monitor`;`sleep` 只能出现在
+   后台命令/Monitor 脚本里面。别再"就等 30 秒"。
+7. **工具报 timeout ≠ 操作没生效。** 2026-08-30 `git commit` 报超时,实际提交已落地
+   (`git log` 里就有)。重试前先核验状态(`git log -1` / `git status`),否则会造成重复提交、
+   重复派发这类真实损害。

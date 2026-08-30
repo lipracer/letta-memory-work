@@ -105,8 +105,10 @@ THOR(H100,172.19.53.15)有封装好的脚本:
    bridge 出处:用户仓库 `torchcompile-test`(长期容器内
    `/workspace/m300/baidu/personal-code/torchcompile-test`,入口 `test_xpu.sh`)。
 
-实测有效的完整调用(`test_multi_kernel.py` → **4 passed / 12 failed / 3 skipped**,
-剩余失败已不是后端问题):
+实测有效的完整调用。**这条命令的已核实真值是 `13 passed / 4 failed / 2 skipped`**
+(2026-08-30 两次逐用例一致;早先记的 `4 passed / 12 failed / 3 skipped` 是**环境不完整**
+那次的产物,已作废 —— 见 `overnight-test-campaign/blockers.md`)。
+配方必须逐字照抄,**少一项(尤其 `PYTHONPATH=.`)就会拿到虚低的 pass 数,而且报出来的是"测试红"不是"环境错"**:
 ```bash
 cd <源码树外的工作目录>   # 树根下跑会被本地 torch/ 遮蔽
 TC_PLATFORM=xpu TRITON_ENABLE_XCN_BACKEND=true TORCHINDUCTOR_COMPILE_THREADS=1 \

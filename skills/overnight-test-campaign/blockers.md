@@ -30,33 +30,16 @@ relay 指纹**按天失效**。2026-08-30 01:46 的 P1 基线就断在这:
 
 ## 3. ~~`test_multi_kernel.py` pass 数两次不一致~~ **已解决(2026-08-30 晚)**
 
-真值:**13 passed / 4 failed / 2 skipped**(19 总),两次完整配方运行**逐用例完全一致**,
-`MK_STABLE=yes`。
+真值 **13 passed / 4 failed / 2 skipped**,两次逐用例一致(`MK_STABLE=yes`)。
+**成因是启动环境不完整**:`4 passed` 那次缺 `PYTHONPATH=.`,`sitecustomize` 没被加载
+(同时缺 `TC_PLATFORM` / `TRITON_ENABLE_XCN_BACKEND`,bridge/backend 整个没接上)。
 
-**成因不是缓存、不是 collect 漂移、不是 skip 漂移 —— 是启动环境不完整。**
-`4 passed` 那次缺 `PYTHONPATH=.`,导致 `sitecustomize` 没被加载
-(同时缺 `TC_PLATFORM` / `TRITON_ENABLE_XCN_BACKEND`,M300 bridge/backend 整个没接上)。
-**教训:环境不闭环时,失败会伪装成"测试本身红",而不是报环境错。** 所以配方必须逐字照抄,
-少一项都不行。
+**教训(通用,比这个数字重要):环境不闭环时,失败会伪装成"测试本身红",而不是报环境错。**
+所以配方必须逐字照抄,少一项都不行;拿到异常低的 pass 数时,**先怀疑环境,再怀疑代码**。
 
-唯一正确命令(逐字照抄,少一项就不是这个结果):
-```bash
-cd /workspace/multinode-20260829/p1-triton && \
-TC_PLATFORM=xpu TRITON_ENABLE_XCN_BACKEND=true TORCHINDUCTOR_COMPILE_THREADS=1 \
-LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/xcuda/targets/x86_64-linux/lib/" \
-PYTHONPATH=. python -m pytest xTorch/test/inductor/test_multi_kernel.py -q
-```
-
-**4 个 fail 有清晰规律 —— 全部是 `cpp_wrapper` 变体**(两次一致):
-`test_softmax_cpp_wrapper`、`test_reduction_scratch_buffer_cpp_wrapper`、
-`+_non_persistent_reduction`、`+_persistent_reduction`。
-对应的非 cpp_wrapper 版本(`test_softmax`、`test_reduction_scratch_buffer`)**全绿**。
-→ 指向一个**真实且成片的兼容性缺口:inductor 的 cpp_wrapper 代码路径**。
-这正是大目标要的产出(见 SKILL.md 开头):不是环境噪声,是该记进缺口清单的东西。
-
-**2 个 skip 是合法的**:`templates require big gpu`(test 文件 111/140 行)——
-上游自身的能力门禁,不是我们误 skip。✅ 符合"skip 必须有正当理由"的要求。
-
-⚠️ 遗留:`4 passed` 那次的具体命令没有留档,所以"到底哪一项缺失贡献了多少"只能靠推断。
+⚠️ 遗留:`4 passed` 那次的具体命令没留档,"哪一项缺失贡献了多少"只能推断。
 **这就是为什么每条远端命令都必须留原文** —— 事后无法重建的现场,只能重跑。
+
+基线数字、命令原文、以及那 4 个 fail 的 `cpp_wrapper` 规律已归档到
+[[reference/m300/cuda_compat_gaps.md]](战役的长期产出清单),本文件不再重复。
 
