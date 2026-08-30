@@ -16,6 +16,12 @@ description: User's preference on token efficiency: act decisively, don't over-e
   消息只写进 `~/.baidu-cx/queue_1.sqlite` 的 `queued_items` 表,executor 不消费(等了 10+ 轮心跳仍在)。
   `queue` 只服务交互式 `resume` session。验证后记得删那行,否则污染下次同 thread 会话。
   所以**回程只能用文件信箱**:执行者判断不了写 `NEEDS_DECISION.md`,我写 `DECISION.md`,我挂 Monitor 盯文件出现。
+- **派 ducx 必须显式带三个参数(2026-08-30 实测)**:`-m <model> -c model_provider=oneapi -c model_reasoning_effort=high`。
+  ①`~/.codex/config.toml` 顶层写着 `model_reasoning_effort = "low"`,**不覆盖就是低推理**,白瞎强模型;
+  ②`-m` 不会自动带上 provider —— 只给 `-m` 会 fallback 到 `provider: openai` 然后死循环
+  `ERROR: Reconnecting... waiting for network`(卡满 120s 无输出,极易误判成模型不可用);
+  ③三个都给全时验证通过:`model: gpt-5.6-terra / provider: oneapi / reasoning effort: high`,11s 返回。
+  可选模型:`gpt-5.6-terra`(最强,给硬任务)/`gpt-5.6-sol`(config 默认)/`gpt-5.6-luna`/`gpt-5.5`/`DeepSeek-V4-Flash`。
 - **本机 ducx 派发**(无状态、可并发、输出不进我上下文):
     `ducx exec -m <model> --skip-git-repo-check -s danger-full-access "$(cat PROMPT.md)" > logs/<任务>/ducx.log 2>&1`
     ducx 跑在本机,能用我的 ssh config / relay-cli,自己 `ssh <节点>` + `docker exec` 下发。**stdout 重定向进任务目录,我不读它**,只读它写出来的 `handback.md`。

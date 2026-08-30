@@ -71,6 +71,38 @@ agent 遇到问题 → 自己能判断的,自己处理并记录
 Letta subagent 略好:可用 `conversation_id` 恢复对话追问,但那也只在**回合之间**,
 执行中途同样插不进话。所以文件信箱是通用解,两种执行者都适用。
 
+### HTTP over ssh 隧道:双向通道可用(2026-08-30 实测)
+
+**结论:容器内起 HTTP 服务,本机可双向读写 —— 但必须经 ssh 隧道,裸直连不通。**
+
+| 路径 | 结果 |
+|---|---|
+| 本机 `curl http://10.206.192.139:28080/` 直连 | ❌ SYN 无回应,`Operation timed out` |
+| 本机 ping 该 IP | ✅ 通(55ms)—— 所以**隔离在 TCP 端口级,不在 IP 级** |
+| 本机 → 开发机放行端口 | **只有 80/443**(且那是网关,不是我们的服务);22/22222/8080/28080 全拦 |
+| 宿主机自己 curl `10.206.192.139:28080` | ✅ 拿到 `HTTP_PROBE_OK` —— 服务和 host 网络模式都正常 |
+| **经 `ssh -L` 隧道** | ✅ **GET 和 POST 都通**,POST body 正常落盘 |
+
+用法:
+```bash
+ssh -f -N -L 28080:127.0.0.1:28080 devbox     # 建隧道(后台)
+curl http://127.0.0.1:28080/probe.txt          # GET,~0.7s 往返
+curl -X POST --data 'DECISION_TEXT' http://127.0.0.1:28080/   # POST,首次 ~1.4s
+```
+容器是 **host 网络模式**,容器内监听端口 = 宿主机端口,**不需要做任何映射**。
+
+**这条通道的价值 —— 它是目前唯一验证过的双向通信方式**(`ducx queue` 已证不通):
+- **agent → 我**:进度可 GET 轮询,不必等它跑完。
+- **我 → agent**:决定可 POST 推进去,不必靠文件轮询。三级升级的第二级由此真正成立。
+
+**但它没有解掉 relay 并发上限**:隧道本身就是一条 ssh 连接,N 台机器 = N 条隧道,
+和直接开 ssh 是同一个瓶颈。⚠️ **不要以为"改用 HTTP"就能绕过 relay 限制。**
+真要降并发,还是得靠"下发即断 + 少量轮询",而不是常驻 N 条隧道。
+
+**取舍(第一晚不要上)**:每台机器要多起一个 HTTP 服务 + 一条隧道 + 端口分配 + 收尾 kill。
+第一晚每实例只跑一个测试、跑完即回,**文件信箱够用,不要引入这套**。
+等真需要"中途观察 / 中途干预"时再启用。
+
 ### 我在这套里做什么
 
 | 谁 | 管什么 |
@@ -133,6 +165,22 @@ P3 铺开前必须先定跨天续认证的办法(候选:零点后再启动、睡
 ### 触发
 用 `letta cron` 建定时任务(加载 `scheduling-tasks` 技能拿准确 flag,别背)。
 一次战役用**一次性 cron**,不要建成 recurring——跑砸了会每晚重复烧机器。
+
+### 派发命令(2026-08-30 实测定型)
+
+```bash
+RUN_DIR=campaigns/<战役名>/runs/$(date +%Y%m%d-%H%M)-<机器>-<任务>
+mkdir -p "$RUN_DIR"
+nohup ducx exec -m gpt-5.6-terra \
+  -c model_provider=oneapi -c model_reasoning_effort=high \
+  --skip-git-repo-check -s danger-full-access \
+  "$(cat "$RUN_DIR/PROMPT.md")" > "$RUN_DIR/ducx.log" 2>&1 &
+```
+**三个参数一个都不能省**(理由见 [[system/human/preferences/token-efficiency.md]]):
+`-m` 挑模型、`model_provider=oneapi` 否则 fallback 到 openai 死循环重连、
+`model_reasoning_effort=high` 否则被 config 里的 `low` 拖成低推理。
+夜间战役用 **`gpt-5.6-terra`**(最强);轻量汇总用 `sol` 省额度。
+`ducx.log` 是它的 stdout,**我不读**,只读它写的 `handback.md`。
 
 ### 委托
 给每片起一个 subagent,**登录方式和执行纪律全部写进 runbook 文件**,不写进 prompt
