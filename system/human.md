@@ -51,6 +51,14 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 ## 大任务派发策略(2026-08-24 与用户约定)
 - 用户问过"大任务要不要拆/超长文档怎么传给 agent"。已答并记住:先读再派,但只读最小量;环境背景(容器/代码位置/flag)由我消化编进 prompt,agent 的领域代码让它自己读。超长文档三种传法(推荐排序):①放到 agent 可见路径(`/workspace`)让它自己读,最省 token;②我读+摘要转述成干净 prompt;③分段硬塞给 prompt(不推荐,易断上下文)。涉及容器内工作时最优 = 把文档送进容器 `/workspace`(`docker cp` 或 base64 落盘),再派**本机 subagent** 经 `ssh` + `docker exec` 去读它干活(容器内 agent 已作废,见上)。
 
+## M300 CUDA 兼容大目标(2026-08-30 用户交代)
+M300 硬件**在编译层面兼容 CUDA**。终极目标:用**自己编译的 PyTorch + 自研 CUDA 兼容运行时**,
+覆盖**上游 PyTorch 的全部单元测试**。夜间战役、autotune 分片这些都是该目标下的子任务。
+判读口径由此确定(细节见 skill `overnight-test-campaign` 开头):测试套件是上游的,
+不许改测试去适配后端;**大面积 skip 比 fail 危险**(fail 暴露缺口,skip 是假装通过);
+分母按上游全量算(当前 DENOM=4959);相对基线**新增的 fail 是最重要的产出**。
+长期产出是一张持续演进的**兼容性缺口清单**,不是一次性绿灯。
+
 ## 夜间远端测试战役(2026-08-28 起沉淀为可复用流程)
 用户要做 M300 PyTorch **autotune**(torch.compile,6 个子特性 ~228 用例)的夜间批量测试:委托 agent 登录环境 → 体检磁盘 → 拉镜像建容器 → 搭环境 → 调度分片跑测试。**该套测试没有统一 runner,必须由 agent 统一调度分配。** 用户明确要求(2026-08-28):**先不跑,先把工作流定义清楚、沉淀成可复用流程**;并认同"先跑通一个例子,后面就好办"。
 流程已固化为技能 `overnight-test-campaign`(四阶段硬门禁:P0 选机体检 → P1 打通单例(人在场)→ P2 定分片 → P3 夜间铺开),机器/镜像/环境事实在其 `machines.md`,subagent 手册模板 `RUNBOOK-template.md`,回传格式 `HANDBACK-schema.md`。**做这类任务先加载该技能,不要凭记忆复述细节。**
