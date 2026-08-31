@@ -19,7 +19,7 @@ version: 0.2.0
 
 **不知道该干什么时,看这一节,不要从头读全部文件。**
 
-**当前卡在第 3.1 节的第②步:冒烟已在跑,环境初始化脚本还没固化。**
+**当前卡在第 3.1 节的第②步:冒烟已跑通,环境初始化脚本还没固化。**
 
 | 已确立 | 值 |
 |---|---|
@@ -28,7 +28,8 @@ version: 0.2.0
 | 分母修法 | **SciPy 1.18.0 → 1.13.1 降级**(NumPy 1.26.4 不动);torch/Triton 未连带改动 |
 | conda 路径 | `/root/miniconda/etc/profile.d/conda.sh`,activate 后 python 应在 `/root/miniconda/envs/python312_torch212/bin/python` |
 | 参数化收集脚本 | 容器内 `/workspace/m0-denominator-final/bin/collect.sh`(**孤本,待固化进 skill**) |
-| execute 冒烟 | 🔄 进行中(`test_best_config.py`) |
+| **execute 冒烟** | ✅ `test_best_config.py`: **1 passed / 0 failed / 0 skipped / 0 error**, pytest rc=0 |
+| 冒烟耗时 | 23.98s;日志含 `triton_poi_fused_add_cos_sin_0` kernel launch |
 | 环境初始化脚本 | ❌ **未固化** —— 第②步门禁,没它不许铺开 |
 | 单文件基线 | `test_multi_kernel.py` = 13 pass / 4 fail / 2 skip,**两次逐用例一致** |
 | 那 4 个 fail | 全是 `cpp_wrapper` 变体 → **真实缺口**,不是噪声 |
@@ -36,6 +37,42 @@ version: 0.2.0
 | 并行收益 | ❌ **未测出**(基准样本撞 timeout,数字作废) |
 | autotune 慢的根因 | ✅ 模拟器 event 返 0 → benchmark 迭代不收缩,见 `pitfalls.md` |
 | 规避开关收益 | ❌ **未测出**(只验了单用例) |
+
+### 当前冒烟基线（已实证，后续可被更优实现替换）
+
+在 node41 的容器 `chenlonglong01_m300_py312_torch212`、conda 环境
+`python312_torch212` 中，以下是当前**已跑通的 execute 基线**：
+
+```text
+TC_PLATFORM=xpu
+TRITON_ENABLE_XCN_BACKEND=true
+TORCHINDUCTOR_COMPILE_THREADS=1
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/xcuda/targets/x86_64-linux/lib/"
+PYTHONPATH=/workspace/m0-denominator-final/triage-triton
+```
+
+`PYTHONPATH` 中的 `sitecustomize.py` 是现有启动期 bridge：它在 `TC_PLATFORM=xpu` 时
+包装 `triton.compile`，把 Inductor 传入的 `GPUTarget(backend="cuda")` 改写为活动目标
+`GPUTarget(backend="houyi", arch="xpu5", warp_size=32)`。这不是 Triton 原生把 `cuda`
+映射到 `xpu`，也不是测试修改；是当前 CUDA 兼容路径的启动条件。
+
+**实证结果**（2026-09-01，报告：
+`/Users/chenlonglong01/workspace/zhixing-work/runs/20260831-1646-m0-denominator/triage-triton.md`）：
+
+- 最小 `torch.compile` CUDA add：✅ 编译并运行，结果 `[4.0, 6.0]`，日志含
+  `triton_poi_fused_add_0`。
+- `test/inductor/test_best_config.py`：✅ **1 passed / 0 failed / 0 skipped / 0 error**，
+  pytest rc=0，耗时 23.98s。
+- 运行时自证：`backends=['triton_shared', 'xcn']`、活动 backend=`HOUYIBackend`、
+  target=`houyi/xpu5`。
+
+**防回归要求**：正式 runner、冒烟和批量任务必须共用这组环境契约；启动前必须自证
+`xcn` 已注册、active target 是 `houyi/xpu5`、bridge 已加载，缺任一项就非零退出，
+不许把未注入 bridge 的失败误判为 target 修复失效。
+
+**未来替换条件**：如果后续 xTorch/Triton 真正支持 `cuda` target，能够在**不依赖上述
+环境变量和 `sitecustomize.py` monkeypatch**的情况下完成同一个 add 和同一个测试，
+再更新本节基线；旧基线保留为历史证据，不得删除。
 
 **下一步该做的**:量 `TORCHINDUCTOR_USE_EXPERIMENTAL_BENCHMARKER=0` 对整文件的实际收益
 (给 ≥3000s 预算,对比 2656s 基线)。这个数字决定所有分片预算,没它无法定 P2。
