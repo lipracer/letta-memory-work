@@ -15,27 +15,35 @@ ssh devbox '<远端命令>'
 ```
 `devbox` = `chenlonglong01@10.206.192.139`(wxtky02-p800-8nic-vd-node41),nproc 208。
 
-### ⚠️ 连接复用:多条命令必须合并,否则每条都认一次指纹
+### ⚠️ 连接复用:先建常驻 master,否则每条命令都弹一次指纹
 
-**每条独立的 `ssh devbox '<cmd>'` 在 master 建成前都是一次完整的 relay 认证 + 建连。**
-一个任务下发几十条就是几十次认证 —— 慢,而且**直接撞 relay 并发上限**(见
-[[skills/overnight-test-campaign/blockers.md]] 第 2 条)。
+**根因(2026-08-31 实测定性)**:`ssh devbox '<cmd>'` 顺带建起的 master 是**那条 ssh 的子进程**。
+执行者给远端命令套 `timeout`、或任务被 kill 时,**杀进程组会把 master 一起带走** ——
+`ControlPersist 8h` 写了也没用,它活不到 8 小时。下一条命令发现没 master,重新认证。
+表现就是"又开始一直弹认证"。
 
-**执行者必须遵守(2026-08-31 定,实测)**:
+**解法:让 master 独立于任何任务进程树。派任务前先跑这一条(会弹一次指纹,仅一次):**
 ```bash
-# ✅ 推荐:多条命令合并成一次 bash -lc,一次建连一次往返
+ssh -MNf -o ControlPersist=8h devbox     # -M 显式 master  -N 不执行命令  -f 后台常驻
+ssh -O check devbox                       # 应答 Master running (pid=…)
+```
+实测证据:建成后连续 `ssh devbox` 每条 **0.8s**、无弹窗;把子 ssh 用 `kill -9 -- -PID`
+**整组杀掉,master pid 不变、后续命令继续复用**。这就是它抗 timeout 的原因。
+
+**执行者侧规则**:
+```bash
+# ✅ 最优:多条命令合并成一次 bash -lc,一次往返
 ssh devbox 'bash -lc "cmd1; cmd2; cmd3"'
-
-# ✅ 次选:先单独建 master,之后才允许并发
-ssh devbox true && ssh -O check devbox   # 应答 Master running (pid=…)
-
-# ❌ 禁止:一上来就并发发多条独立 ssh —— 每条都没 master、各自认证、被 relay 断连
+# ❌ 禁止:master 未建成就并发发多条独立 ssh —— 各自认证、被 relay 断连
 ```
 
-已修复的根因:`~/.ssh/config` 里 `ControlPath` 曾分裂成 `~/.ssh/master-…` 和
-`~/.ssh/sessions/master-…` 两套,而 `devbox` 同时命中两条 Host 规则 → 同一台机两条通道、
-各认一次。现已全部统一到 `~/.ssh/master-%r@%h:%p`。
-**同一台机可能命中的所有 Host 段,ControlPath 必须逐字相同。**
+⚠️ **`timeout` 是 GNU coreutils,macOS 本机没有**(实测 `rc=127 command not found`)。
+所以"每条命令带 timeout"只能写在**远端 `bash -lc` 里面**;本机侧要限时用
+`ssh -o ConnectTimeout=` 或后台 + 条件轮询。
+
+配置前提:`~/.ssh/config` 里同一台机可能命中的**所有 Host 段,ControlPath 必须逐字相同**。
+曾分裂成 `~/.ssh/master-…` 与 `~/.ssh/sessions/master-…` 两套,导致 `ssh devbox` 和
+`ssh <ip>` 各建一条通道各认一次;现已统一到 `~/.ssh/master-%r@%h:%p`。
 
 ⚠️ **有任务在飞时不要改 `~/.ssh/config`** —— 会打断它的连接。等回收后再动。
 

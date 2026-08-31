@@ -1,0 +1,56 @@
+#!/bin/bash
+# ensure-master: 幂等地保证到目标机的 SSH ControlMaster 常驻通道存在
+#
+# 为什么需要它(2026-08-31 实测定性):
+#   `ssh <host> '<cmd>'` 顺带建起的 master 是那条 ssh 的子进程。执行者给命令套 timeout、
+#   或任务被 kill 时,杀进程组会把 master 一起带走 —— ControlPersist 写了也活不到时限,
+#   下一条命令重新走 relay 认证,表现为"一直弹指纹"。
+#   `ssh -MNf` 建的 master 不属于任何任务进程树,实测 kill -9 整组子 ssh 后 master pid 不变。
+#
+# 用法:
+#   ensure-master              # 默认 devbox
+#   ensure-master devbox node53
+#   ensure-master --check devbox        # 只查不建
+#   PERSIST=12h ensure-master devbox    # 自定义存活时长(默认 8h)
+#
+# 派任务前调用它。已存在则秒返回、不弹窗;不存在才建(此时可能弹一次指纹,需真 TTY)。
+
+set -uo pipefail
+
+PERSIST="${PERSIST:-8h}"
+CHECK_ONLY=0
+if [ "${1:-}" = "--check" ]; then CHECK_ONLY=1; shift; fi
+
+HOSTS=("$@")
+[ ${#HOSTS[@]} -eq 0 ] && HOSTS=(devbox)
+
+rc_all=0
+for h in "${HOSTS[@]}"; do
+  if ssh -O check "$h" >/dev/null 2>&1; then
+    pid=$(ssh -O check "$h" 2>&1 | sed -n 's/.*pid=\([0-9]*\).*/\1/p')
+    echo "[OK]   $h  master already running (pid=${pid:-?})"
+    continue
+  fi
+
+  if [ "$CHECK_ONLY" = 1 ]; then
+    echo "[MISS] $h  no master"
+    rc_all=1
+    continue
+  fi
+
+  echo "[..]   $h  building master (may prompt for fingerprint once)"
+  if ssh -MNf -o ControlPersist="$PERSIST" "$h" 2>&1; then
+    pid=$(ssh -O check "$h" 2>&1 | sed -n 's/.*pid=\([0-9]*\).*/\1/p')
+    if [ -n "$pid" ]; then
+      echo "[NEW]  $h  master up (pid=$pid, persist=$PERSIST)"
+    else
+      echo "[FAIL] $h  -MNf returned 0 but -O check finds no master"
+      rc_all=1
+    fi
+  else
+    echo "[FAIL] $h  could not build master"
+    rc_all=1
+  fi
+done
+
+exit $rc_all

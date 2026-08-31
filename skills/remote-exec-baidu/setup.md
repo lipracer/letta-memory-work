@@ -145,6 +145,45 @@ ssh -O exit  devbox                                        # 需要时显式关�
 | `h100` | expect 脚本，一路进到 THOR 的容器并把控制权交还用户 | ✅ 在用（需真 TTY） |
 | `qa-exec` | 在 THOR 容器内非交互执行命令（`script` 伪 PTY 方案） | ✅ 在用 |
 | `dev-agent` | 曾用于驱动**容器内** ducx | ❌ **已作废**，见下 |
+| `ensure-master` | 幂等保证 ControlMaster 常驻通道存在。**派任务前必跑** | ✅ 2026-08-31 新增 |
+| `timeout` | GNU `timeout` 的 perl 实现 —— macOS 自带 userland **没有这个命令** | ✅ 2026-08-31 新增 |
+
+### `ensure-master`：派任务前的第一条命令
+
+```bash
+ensure-master                      # 默认 devbox，已存在则 0.5s 返回、不弹窗
+ensure-master devbox node53        # 多台
+ensure-master --check devbox       # 只查不建（缺失时 rc=1）
+PERSIST=12h ensure-master devbox   # 默认 8h
+```
+
+它做的事就是 `ssh -MNf -o ControlPersist=8h`，值在于**幂等**：已有 master 时不重连、不弹窗，
+所以可以无脑放在每次派发之前。缺失时才建，此时可能弹一次指纹（**需真 TTY**，agent 代不了）。
+
+### `timeout`：不是可选项，是必需的 shim
+
+macOS 是 BSD userland，**没有 `timeout`**。后果比"少个命令"严重：
+agent（和执行者）会习惯性写 `timeout 300 <cmd>`，实际收到 **`rc=127 command not found`** ——
+超时保护整段静默失效，而且 127 极易被误判成"环境坏了/命令不存在"，引出一整轮错误排查。
+
+所以本机装了一个 perl 实现的 shim（`~/.local/bin/timeout`），让本机与远端 Linux 行为一致。
+已验证的语义（8 项全过）：
+
+| 场景 | rc |
+|---|---|
+| 正常完成 | 透传 0 |
+| 命令自身 `exit 42` | 透传 42 |
+| 超时被杀 | **124**（GNU 约定） |
+| `2s` / `5m` / `2h` / `1d` 后缀 | 同上 |
+| 命令不存在 | 127 |
+| `-k 2 2` 对 `trap "" TERM` 的进程补 KILL | 124 |
+| 无效时长 | 125 |
+
+支持 `-k KILL_AFTER` / `-s SIG`。**未实现** `--preserve-status` / `--foreground` ——
+需要完整语义就 `brew install coreutils` 用 `gtimeout`（本机目前**没装 brew coreutils**）。
+
+实现要点：子进程 `setpgrp` 自成进程组，超时时对**整组**发信号，`-k` 到点再补 `-KILL`；
+shim 自身收到 INT/TERM/HUP 也会先收割子进程，不留孤儿。
 
 ### `wxtky-probe`：探测类脚本的正确形态
 
@@ -195,11 +234,25 @@ script 伪 PTY → relay-cli(复用当天指纹) → 跳板机 → ssh qa_work@1
 □ 装 relay-cli 到 ~/.local/bin，确认 which -a 里它在最前
 □ 抄上面的 ~/.ssh/config（改 User/IP），检查所有段 ControlPath 逐字一致
 □ 用户手动跑一次 relay-cli 完成指纹解锁（需真 TTY，agent 代不了）
-□ ssh devbox true 建 master，ssh -O check devbox 验证
-□ time ssh devbox true 两次，确认第二次明显更快
+□ 拷 ensure-master 到 ~/.local/bin，跑 ensure-master devbox 建常驻 master
+□ 拷 timeout shim 到 ~/.local/bin（macOS 没有 timeout，缺了会静默失效成 rc=127）
+□ time ssh devbox true 两次，确认都在 1s 内
 □ 按需拷 wxtky-probe / h100 / qa-exec，改掉里面的用户名与明文密码
 □ 不要拷 dev-agent
 ```
+
+## 5. 脚本源码就在本 skill 里
+
+`ensure-master` 和 `timeout` 的**权威副本已版本化**在：
+
+```
+<memory>/skills/remote-exec-baidu/bin/ensure-master
+<memory>/skills/remote-exec-baidu/bin/timeout
+```
+
+换机时直接 `cp` 到 `~/.local/bin/` 并 `chmod +x`，不用重写。
+（`wxtky-probe` / `h100` / `qa-exec` 含明文密码与硬编码用户名，**故意不入库**，
+需要时按本文描述重写。）
 
 ## 相关
 - 连接形式、conda 自证、CUDA 口径、写权限边界：[[skills/remote-exec-baidu/SKILL.md]]
