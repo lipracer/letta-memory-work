@@ -40,7 +40,9 @@ Custom op autotune。
        └─ multi-kernel 与运行期变体选择(其中 1 个)
             └─ test_multi_kernel.py(1 个测试文件,19 例,基线 13/4/2)
 ```
-**上游全量单测分母 DENOM=4959**,与 feature 数是两个不同口径,不要互相换算。
+**三层分母，不得互相换算**：整个 PyTorch（**团队的**）⊃ torch.compile/inductor 全量（**我们的天花板**）
+⊃ Autotuning 6 个 feature（当前战场）。feature 数与用例数也是两个口径。
+⚠️ 旧记的 `DENOM=4959` 出处未留证（既不知哪些文件，也不知哪个环境），**别直接用**。
 
 ⚠️ **不许抄文档里的用例数**:`count_tests.py` 在仓库里不存在(AUDIT 已标为复现性缺陷),
 子特性用例数逐行相加会重复计数(子特性共享测试文件)。分母一律现场
