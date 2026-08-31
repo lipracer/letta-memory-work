@@ -38,12 +38,14 @@ Name: chenlonglong01(GitHub 用户名 lipracer)。AI compiler 资深工程师,�
 - 另一个专属容器 `chenlonglong01_dev` 也是 HOME=/root,但**没找到** codex/ducx(待确认是否也用 .comate 路径,未细查)。
 
 ## relay-cli v1.0.5(2026-08-24 升级)
-- 装在 `~/.local/bin/relay-cli`(旧版在 /usr/local/bin,已备份 ~/relay-cli.old.bak)。支持:
-  - `relay-cli proxy <host> <port> <user>` :SSH ProxyCommand 透传,让 SSH/VS Code/Codex/cursor 通过 relay 审计连接开发机。
-  - `relay-cli ssh [user@]host[:port]`:一次命令登录开发机。
-  - AI 交互模式(Ctrl+A):登录后用自然语言拆解任务逐步执行。
-  - `relay-cli proxy setup`:一键配置。开发机密码存 `~/.relay-cli/devbox-passwords/<开发机地址>`。
-  - 交互式 ssh 我无法直接操作,需用一次性命令模式 + 免密;旧版 `operation not supported by device` panic 已随新版本解决。
+- 装在 `~/.local/bin/relay-cli`(旧版在 /usr/local/bin 仍在 PATH,靠顺序生效;已备份 ~/relay-cli.old.bak)。
+  常用:`relay-cli proxy <host> <port> <user>`(SSH ProxyCommand 透传)、`relay-cli ssh [user@]host`、
+  `relay-cli proxy setup`(一键写 config)、Ctrl+A 进 AI 模式。
+- 交互式 ssh 我无法直接操作,需用一次性命令模式 + 免密;旧版 `operation not supported by device` panic 已修。
+- **指纹认证需要真 TTY,agent 代替不了**,每天首次由用户手动跑一次 `relay-cli`。
+  重复弹指纹 = 有东西在重复建连(见下),不是 relay 的正常行为,用户视其为骚扰。
+- 安装全文、`~/.ssh/config` 可抄的全文、四个封装脚本、换机重建清单:
+  [[skills/remote-exec-baidu/setup.md]](2026-08-31 沉淀,可直接给别人照做)。
 
 ## ducx/codex 远端架构(2026-08-24 查明)
 - 百度定制 codex 客户端(ducx/baidu-cx)是**瘦客户端**——配置里只有 oneapi 推理网关(`oneapi-comate.baidu-int.com` 或 `ai-chat.host:8602`),真正执行在百度服务端沙箱内,本机**看不到也枚举不到**它背后用了哪些机器(`remote_control_enrollments`/`agent_jobs` 表均空)。驱动它干活:非交互用 `codex exec "任务" --skip-git-repo-check`,或用 `codex mcp-server`(stdio MCP 端点)。macOS 无 `timeout` 命令。若用户要"本机对话、远端机器干活"且机器指定,应走 relay-cli proxy 那条 SSH 通路(见上文)把命令发到那台装了 codex 的机器,而不是依赖 ducx 客户端。
@@ -68,6 +70,10 @@ M300 硬件**在编译层面兼容 CUDA**。终极目标:用**自己编译的 Py
 没记下来 —— 用它前必须在**最终跑测试的那个环境**里重新 `--collect-only` 取证并记下文件范围。
 
 夜间战役、autotune 分片这些都是该目标下的子任务。
+**计划的骨架是 M0→M4 里程碑**(M0 取证期四项、M1 按 feature 分批且 `pending`=0 才放下一批、
+M2 只补上游不做的 dtype 矩阵与 bit-exact harness),结束标准是七分类归因而非通过率;
+人机验收分工与"验收需要人读日志=分类器没做完"这条硬判据,一并见
+[[reference/m300/task_docs.md]]。汇报计划类内容时**结论先行:里程碑放最前**。
 判读口径由此确定(细节见 skill `overnight-test-campaign` 开头):测试套件是上游的,
 不许改测试去适配后端;**大面积 skip 比 fail 危险**(fail 暴露缺口,skip 是假装通过);
 分母按上游全量算(**范围=torch.compile/inductor**,不是整个 torch);相对基线**新增的 fail 是最重要的产出**。
@@ -79,7 +85,7 @@ M300 硬件**在编译层面兼容 CUDA**。终极目标:用**自己编译的 Py
 用户在 2026-08-29 追加的四条硬约束(细节在技能里):①**执行主体是本机 subagent**,连接/体检/建目录/起容器/冒烟每个环节都委托出去,不在主上下文逐条 ssh;②**每个 subagent 必须回传结构化 handback**(机器 ip、状态、工作目录、容器名、进容器后逐条命令原文+rc、结果计数、远端日志路径+行数+md5),完整测试日志留远端,**没有 handback 视为没干活**;③**写权限边界**:宿主机除 `docker pull/run/exec` 和建自己工作目录外禁止任何写,容器内只许写 `/workspace`,`/klxlake` 和其他用户目录禁写("盘满就顺手清"绝对不许,换机器);④**技能里不许写死用户名**,路径用 `$(id -un)`。
 四条决定性环境事实(展开与命令见技能 `machines.md`,别凭记忆复述):①官方镜像默认跑**功能模拟器**,不用真卡不用锁卡,瓶颈是 CPU/内存,那堆 `XPUSIM_*`/`CUDA_AMODEL_*` **开箱可用一个都别改**;②**M300 软件栈兼容 CUDA,一律按 CUDA 写法用**(`torch.cuda.is_available()`/`device="cuda"`/`TestCommonCUDA`)——实测 `torch.xpu.is_available()`=False,用它当门禁会让用例全部误 skip(假绿比报红危险),好处是上游 CUDA 测试可原样复用;③进容器**每条命令**都要先 activate 统一环境 `python312_torch212`(`docker exec bash -lc` 每条是全新 shell,activate 不跨命令);④容器建好后须跑 KU`iLP-gei3L_-MnK` 的环境初始化(BOS→`restore.sh` 配网盘+ssh key)才能 clone 内网仓库,**必须在任何 clone 之前**跑掉;该文档正文有明文长期凭据(BOS AK/SK、GitHub token、密码)——现场读取,不落盘不进 prompt,已建议用户轮换。宿主机工作目录 `/ssd<N>/$(id -un)`(N 按各机最空盘选)→ 容器内统一 `/workspace`。
 镜像权威出处:KU《M300软件产出镜像用户手册》`w_NznaMuJTnLdD`,当前 v2 `iregistry.baidu-int.com/xpu/m300_pytorch212_ubuntu2204_x86_64_cuda12:20260714_27`。
-2026-08-29 机制试点已通:两个本机 subagent 各进容器跑最简 torch add,3 passed × 2,交叉复核一致 —— `本机 → ssh devbox → docker exec → pytest` 这条链路是验证过的。下一步 P1 用 `test_multi_kernel.py`(14 用例)取分片基线;注意 feature 文档里到处引用的 `count_tests.py` **实际不存在**(AUDIT 标为复现性缺陷),228 这个用例数要重新取证。
+2026-08-29 机制试点已通:两个本机 subagent 各进容器跑最简 torch add,3 passed × 2,交叉复核一致 —— `本机 → ssh devbox → docker exec → pytest` 这条链路是验证过的。P1 单文件基线已拿到(见 skill 第 1 节的状态表,不在这里复述)。注意 feature 文档里到处引用的 `count_tests.py` **实际不存在**(AUDIT 标为复现性缺陷),文档里的 AST 用例数(以及顶层汇总表)都要重新取证;**AST 数不是分母,分母只能在最终环境里 `--collect-only` 收**。
 
 ## GPU 机器与测试环境
 - 美研 GPU 机器：ALCHEMY（172.19.53.18，A100/3090/A10/A30）、THANOS（172.19.53.5，8×A100 SXM）、ATOM（172.19.53.2，A100/A10/A30）、THOR（172.19.53.15，H100）。使用前需在 5794977 群锁卡，避免从国内大量拷数据。
