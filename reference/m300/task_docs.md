@@ -67,3 +67,15 @@ Custom op autotune。
 ③ 拆掉 v0.2 把方向 1→·2 串行的错（基建线与业务线应并行）；
 ④ 验收三级 **功能 → 精度 → 性能**（用户 2026-08-31 定），精度标准见 [[reference/m300/precision_criteria.md]]。
 （已作废：我曾说“功能模拟器无时间信息→性能线阵亡”—— event 返 0 用户说已修，不要再引用。）
+
+**v0.3 已上 KB（2026-08-31）**：`RXckLFp0zlb1SH`
+《研发计划：AI 编译器全链路适配与使能（v0.3 草案·验收标准细化）》
+—— 作为 v0.2 (`n4sA1lj34OAgW-`) 的**子文档**新建，未覆盖原稿。
+本地源文件 `/Users/chenlonglong01/workspace/zhixing-work/PLAN-v0.3.md`。
+v0.3 相对 v0.2 四处实质改动：① 新增 M0 取证期；② 结束标准改为 `pending`=0 七分类归因；
+③ 拆掉 (1)→(2) 串行错误；④ 新增**精度验收标准**整节（见 [[reference/m300/precision_criteria.md]]）。
+
+**写 KB 长文档的可用命令**（已实测）：
+`ku create-doc -repo-id <repo> -parent-doc-id <父> -title <标题> -md-file <本地md> -username chenlonglong01`
+—— 直接传本地 markdown 文件，不用拼 `-content` 字符串；表格/代码块保留完整。
+验证用 `ku query-content -doc-id <guid>` 回读关键字。
