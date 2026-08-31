@@ -89,9 +89,15 @@ docker pull <registry>/<image>:<tag>          # 先拉,失败得早比失败得�
 
 ### 5. 挑最小用例
 挑选原则:**用例数最少、依赖最少、不需要特殊硬件档位的那个子特性**。
-autotune 场景推荐 `test_multi_kernel.py`(14 个用例,H2 即可,不需要 CUTLASS SM90+/Blackwell)。
+判据(按此挑,不要照抄文件名):
+- 用例数**十几到二十**,不是上百 —— 单文件应能在几分钟内跑完;
+- **不需要特殊硬件档位**(避开要 CUTLASS SM90+ / Blackwell 之类的);
+- 不带自己的 `SKIP_TESTS` 列表(那会掩盖真实结果);
+- 测试类少,依赖少。
 
-不要一开始就挑 `test_max_autotune.py`(125 个用例、10 个测试类、还带 `SKIP_TESTS` 列表)。
+反例特征:上百用例 + 多个测试类 + 自带 skip 列表 → 不适合当第一个。
+2026-08-30 在 autotune 场景据此选中 `test_multi_kernel.py`(19 例约 200s),
+落选 `test_max_autotune.py`(125 例、10 类、带 `SKIP_TESTS`)。
 
 ### 6. 真的跑一次
 
@@ -99,7 +105,7 @@ autotune 场景推荐 `test_multi_kernel.py`(14 个用例,H2 即可,不需要 CU
 cd <repo>/test/inductor    # xTorch 在容器内 /workspace/m300/torch_feature/xTorch
 source /root/miniconda/etc/profile.d/conda.sh && conda activate python312_torch212
 export XPUSIM_LAUNCH_LOG_LEVEL=DISABLE
-python -m pytest test_multi_kernel.py -v --durations=0 2>&1 | tee run.log
+python -m pytest <选中的测试文件> -v --durations=0 2>&1 | tee run.log
 ```
 
 **进容器必须先 activate `python312_torch212`** —— 裸 `python` 是 miniconda base(3.13,无 torch)。

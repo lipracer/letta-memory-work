@@ -150,7 +150,8 @@ THOR(H100,172.19.53.15)有封装好的脚本:
 cd <源码树外的工作目录>   # 树根下跑会被本地 torch/ 遮蔽
 TC_PLATFORM=xpu TRITON_ENABLE_XCN_BACKEND=true TORCHINDUCTOR_COMPILE_THREADS=1 \
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/xcuda/targets/x86_64-linux/lib/" \
-PYTHONPATH=. python -m pytest xTorch/test/inductor/test_multi_kernel.py -q
+PYTHONPATH=. python -m pytest <测试文件相对路径> -q
+# 例(2026-08-30 取证时用的): xTorch/test/inductor/test_multi_kernel.py
 ```
 `TORCHINDUCTOR_COMPILE_THREADS=1`:编译子进程会丢掉 monkeypatch,必须单线程。
 上层张量/device 全程仍是 **CUDA 口径**(`TEST_DEVICE=cuda:0`),不要改成 `torch.xpu`。

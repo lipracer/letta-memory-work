@@ -110,3 +110,32 @@ description: 夜间测试战役踩过的常见坑与规避方式(overnight-test-
 **功能模拟器本身是多线程的**,那个 env 拦不住它。
 按"一进程一核"排并行度会严重高估机器能承载的路数,直接导致抢爆共享机器。
 **并行度必须按实测的每进程核数算**,不是按进程数算。
+
+
+## 模拟器 CUDA event 返回 0 → autotune benchmark 迭代数不收缩(2026-08-31 取证)
+
+**这是全局性能问题,不是某个文件的问题。凡是重度依赖 autotune benchmark 的测试都受影响。**
+
+链路(已实测取证):
+1. 镜像默认 `XPUSIM_SIMULATOR_MODE=FUNCTION`(功能模拟器,非真硬件);
+2. CUDA event 计时拿到 **`ELAPSED_MS=0.0`**(实测打印两个 event 均为 0);
+3. inductor 默认走 **experimental benchmarker**,该路径**只在 `estimated_timing > 0` 时才收缩
+   `benchmark_iters`**(`xTorch/torch/_inductor/runtime/benchmarking.py:501-505`),
+   否则**保持 100 次迭代**;
+4. → 每个 autotune 候选都被跑 100 遍,整体被放大约两个数量级。
+
+**规避开关(上游已有逻辑,默认没走它)**:
+```bash
+TORCHINDUCTOR_USE_EXPERIMENTAL_BENCHMARKER=0   # 切到 TritonBenchmarker
+```
+依据:`xTorch/torch/_inductor/config.py:483-490`、`runtime/benchmarking.py:19-21,547-548`;
+Triton 的 `do_bench` 有 `estimate_ms = max(estimate_ms, 1e-3)` 下钳
+(`site-packages/triton/testing.py`),因此不会由 0 推出巨大重复次数。
+**默认值是 True(走 experimental),即默认踩坑** —— 必须显式设 0。
+
+⚠️ **未测项:开关对整文件墙钟的实际收益。** 复测只验了单用例(30~31s,通过),
+整文件那次只给了 339s 预算故仍 rc=124 —— **不能据此说开关无效**。
+下一步该做的是:带开关给整文件 ≥3000s 预算跑一次,和 2656s 基线对比。
+
+**教训**:功能模拟器不是"慢一点的真卡",它会让**依赖真实计时的上游启发式整体失效**。
+遇到"模拟器上某类测试异常慢",先怀疑计时返回 0,而不是先怀疑测试本身。
