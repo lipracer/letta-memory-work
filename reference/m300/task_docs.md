@@ -52,3 +52,17 @@ Custom op autotune。
 - 硬件规格:[[reference/m300/hw_spec.md]]
 - 已确认的兼容性缺口:[[reference/m300/cuda_compat_gaps.md]]
 - 夜间战役流程:[[skills/overnight-test-campaign/SKILL.md]]
+
+## 研发计划正文（KB）
+
+《研发计划：AI 编译器全链路适配与使能》 `n4sA1lj34OAgW-`
+（团队库 XPyTorch `AI4AMs73rr`，group `BeQck0ZK7s`，用户 2026-08-17 起草 v0.2）
+—— 8 条方向（PyTorch 5 + TF 3）、M1~M4 里程碑、依赖图。
+这是**比 feature.md 更上层**的文档：feature.md 只管 torch.compile，
+这份还包含推理/训练算子、TF eager/XLA、分布式通信。
+
+我提的 v0.3 修订在本机 `/Users/chenlonglong01/workspace/zhixing-work/PLAN-v0.3.md`，
+核心改动（用户尚未拍板）：① 新增 **M0 取证期**（分母/业务模型清单/常见规模）；
+② 结束标准从"通过率/测试清零"改成 **`pending`=0 四分类归因**（通过率会奖励 skip）；
+③ 拆掉 v0.2 把方向 1→·2 串行的错（基建线与业务线应并行）；
+④ 功能模拟器无时间信息 → 性能线阵亡，空窗期用 **fallback 率**代替。
