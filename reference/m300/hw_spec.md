@@ -40,4 +40,5 @@ Source: `/workspace/m300/perf_sim_result/hw_spec.md`
 
 
 ## Torch feature docs
+- 权威索引见 [[reference/m300/task_docs.md]]（93 个 feature 总盘子、parts/ 拆分、feature→test 映射、AUDIT）。
 - `torch_feature/` 这组文档（含 `feature.md`、`parts/` 等）是用户此前委托远端 Claude 整理、后来由用户自己在本地完成整理的版本；后续以用户本地整理稿为准。
