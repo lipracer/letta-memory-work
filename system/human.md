@@ -65,12 +65,16 @@ M300 硬件**在编译层面兼容 CUDA**。终极目标:用**自己编译的 Py
 | **torch.compile / inductor 全量**（我们的天花板） | 待现场取证 | 用户这条线 |
 | **Autotuning 6 个 feature**（当前战场） | 少数测试文件 | 用户本人 owner |
 
-✅ **分母已取证并经独立复核(2026-08-31)**:62 个 inductor 测试文件,
-`--collect-only` 收得 **12955** 例。抽样 10 行回原始日志逐字核对一致,总和独立复算一致。
-**但 12955 是"快照计数",不是最终分母** —— 复核判定要先做三处调整:
-①`test_op_dtype_prop.py` 是环境缺陷(NumPy 1.26.4 已删 `np.long`,SciPy 1.18.0 仍引用)
-→ 修完须**重收集**;②`test_pallas.py`(无 jax)③`test_triton_cpu_backend.py`
-(Triton 3.6.0 只注册 `triton_shared`/`xpu`,无 `cpu` 键)两者对本配置**真实不适用,应剔除**。
+✅ **最终分母 = 13574**(2026-08-31 夜,我亲自从远端产物核出,非转述)。
+62 个 inductor 文件 `--collect-only`;`collect_summary.tsv` md5 `6952f984...`,
+容器内 `/workspace/m0-denominator-final/`。
+- 修法:**SciPy 1.18.0 → 1.13.1 降级**(NumPy 保持 1.26.4 不动),
+  `torch 2.12.0a0+git0382020` 与 Triton **未被连带改动**,`torch.cuda.is_available()` 仍 True。
+- 12955 → 13574,**差值 619 恰好等于** `test_op_dtype_prop.py` 修好后从 0 变成 619。干净可解释。
+- 仍剩 2 个 rc=5 且 collect=0:`test_pallas.py`(无 jax)、`test_triton_cpu_backend.py`
+  (Triton 3.6.0 只注册 `triton_shared`/`xpu`,无 `cpu` 键)——**真实不适用,已剔除且贡献为 0**,
+  所以"剔除后"仍是 13574。
+- 参数化脚本已落地:容器内 `/workspace/m0-denominator-final/bin/collect.sh`(换一批文件只换参数)。
 另:**AST 数不能替代 collect 数** —— `test_perf.py` 72→68 是因为 AST 按 ClassDef 硬数,
 把未继承测试基类的 `WouldBeNiceIfItWorked` 也算进去了。
 
