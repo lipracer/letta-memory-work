@@ -61,13 +61,26 @@ M300 硬件**在编译层面兼容 CUDA**。终极目标:用**自己编译的 Py
 所以有**三层嵌套分母**,汇报时必须说清是哪一层,不得互相换算:
 | 层 | 范围 | 负责人 |
 |---|---|---|
-| 整个 PyTorch 全量单测 | 数量级远大于 4959 | 团队,**不是我们** |
+| 整个 PyTorch 全量单测 | 数量级远大于 12955 | 团队,**不是我们** |
 | **torch.compile / inductor 全量**（我们的天花板） | 待现场取证 | 用户这条线 |
 | **Autotuning 6 个 feature**（当前战场） | 少数测试文件 | 用户本人 owner |
 
-⚠️ **DENOM=4959 的出处未留证**。已知同批 16 个 inductor 文件装 Triton 前后从 1997→2994,
-可见 4959 是**inductor 目录量级**的数、不可能是整个 PyTorch。但具体是哪些文件、哪个环境里收的,
-没记下来 —— 用它前必须在**最终跑测试的那个环境**里重新 `--collect-only` 取证并记下文件范围。
+✅ **分母已取证并经独立复核(2026-08-31)**:62 个 inductor 测试文件,
+`--collect-only` 收得 **12955** 例。抽样 10 行回原始日志逐字核对一致,总和独立复算一致。
+**但 12955 是"快照计数",不是最终分母** —— 复核判定要先做三处调整:
+①`test_op_dtype_prop.py` 是环境缺陷(NumPy 1.26.4 已删 `np.long`,SciPy 1.18.0 仍引用)
+→ 修完须**重收集**;②`test_pallas.py`(无 jax)③`test_triton_cpu_backend.py`
+(Triton 3.6.0 只注册 `triton_shared`/`xpu`,无 `cpu` 键)两者对本配置**真实不适用,应剔除**。
+另:**AST 数不能替代 collect 数** —— `test_perf.py` 72→68 是因为 AST 按 ClassDef 硬数,
+把未继承测试基类的 `WouldBeNiceIfItWorked` 也算进去了。
+
+⚠️ 分母**绑定环境**,换环境即失效。快照条件:torch `2.12.0a0+git0382020` / Python 3.12.13 /
+NumPy 1.26.4 / SciPy 1.18.0 / **Triton 3.6.0** / `torch.cuda.is_available()==True` /
+Kunlun5 功能模拟器。已知变动因素:Triton 装不装(同批 16 文件 1997→2994)、
+可选依赖(jax/scipy/CuTeDSL)、`PYTORCH_TESTING_DEVICE_ONLY_FOR` 等收集门控、xTorch 提交。
+
+❌ **`4959` / `124/126` / `74/77` 已确认无出处**(复核在 62 行表、commands.log、抽样证据里
+都找不到),**永久作废,不许再引用**。
 
 夜间战役、autotune 分片这些都是该目标下的子任务。
 **计划的骨架是 M0→M4 里程碑**(M0 取证期四项、M1 按 feature 分批且 `pending`=0 才放下一批、
