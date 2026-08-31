@@ -1,147 +1,105 @@
 ---
 name: overnight-test-campaign
 description: This skill should be used when the user wants to run a large batch of tests overnight (半夜/夜间跑) on remote GPU/XPU machines by delegating to agents — including environment and disk precheck, pulling images and building containers, sharding test suites that have no unified runner, and collecting an auditable report by morning. First campaign is the M300 PyTorch Autotuning (torch.compile) suite. Load this before scheduling any unattended remote test run.
-version: 0.1.1
+version: 0.2.0
 ---
 
-# 夜间远端测试战役(overnight test campaign)
+# 夜间远端测试战役
 
-无人值守的远端批量测试。核心矛盾:测试没有统一 runner,机器状态不一,而我半夜不在场
-—— 所以**一切必须先在有人看着的时候打通一遍**,再交给夜里的 agent 重复执行。
+**做什么**:让上游 PyTorch 单元测试在 M300(编译层面兼容 CUDA)上跑起来,
+批量、无人值守、早上有一份可复现的报告。产出是**一张持续演进的兼容性缺口清单**
+([[reference/m300/cuda_compat_gaps.md]]),不是一次性绿灯。
 
-## 这件事为什么存在(2026-08-30 用户交代的大目标)
+**核心矛盾**:测试套件没有统一 runner,机器是共享的,而半夜没人在场。
+所以一切必须先在有人看着时打通一遍。
 
-**大目标:M300 硬件在编译层面兼容 CUDA,所以要用"我们自己编译的 PyTorch + 自研 CUDA 兼容运行时",
-去覆盖 PyTorch 的全部单元测试。** 夜间战役跑的每一片,都是这个目标下的子任务。
+---
 
-这决定了**结果怎么判读**,不只是背景介绍:
+## 1. 先读这个:当前进展
 
-- **测试套件不是我们的,是上游 PyTorch 的。** 所以"用例应该按 CUDA 写法跑"不是权宜之计,
-  而是**验收口径本身** —— 目标就是上游 CUDA 测试原样拿来能过。
-  由此:`torch.cuda.is_available()` / `device="cuda"` / `TestCommonCUDA` 是正确用法;
-  改测试去适配我们的后端属于**污染验收**,除非上游本身就有该分支。
-- **skip 比 fail 危险。** fail 是"兼容性缺口暴露出来了",是有价值的产出;
-  大面积 skip 是"我们假装通过了",直接毁掉这套东西的意义。
-  所以每次都要把 skip 数和 skip 原因摊出来(`-rs`),**不许只报 pass 数**。
-- **分母必须诚实。** 覆盖率是对"上游全部单元测试"的覆盖率(当前口径 DENOM=4959),
-  不是对"我们挑出来能跑的那些"的覆盖率。缺失文件、collect 失败、整片 skip 都要计入缺口。
-- **新增 fail 是最重要的信息。** 相对 P1 基线新出现的 fail 指向真实的兼容性回退;
-  早上的报告必须把它排在最前面,不能被"整体成功"盖过去。
-- 长期看,这套东西的产出是**一张持续演进的兼容性缺口清单**,不是一次性的绿灯。
-  清单本体在 [[reference/m300/cuda_compat_gaps.md]](已核实基线 + 已确认缺口),
-  每晚有新的已核实结论就往那里加,不要散落在各次报告里。
-  所以留档要求(逐条命令、远端日志 md5、run 目录隔离)不是仪式,是让缺口能被复现和追踪。
+**不知道该干什么时,看这一节,不要从头读全部文件。**
 
-当前子任务:M300 PyTorch **Autotuning(torch.compile)** 套件,6 个子特性。
-
-## 铁律:先打通一个,再铺开
-
-**永远不要把没跑通过一次的测试放进夜间批量。** 未验证的批量在半夜只会产出一堆
-error,第二天没有任何可用信息,白烧一晚机器。
-
-分四阶段,阶段之间是硬门禁(gate),前一阶段没过不许进下一阶段:
-
-| 阶段 | 做什么 | 门禁 |
-|---|---|---|
-| **P0 选机 & 体检** | 登录、看盘、看卡、确认镜像可拉 | 目标机有足够空间和空闲卡 |
-| **P0.5 通链路试点** | 拿**已有容器**派 2 个 subagent 跑一个最简用例(如 torch add) | 委托链路本身跑通 + 双份 handback |
-| **P1 打通单例** | 建容器 → **跑环境初始化(配网盘+ssh key)** → 冒烟 → **手动跑通一个最小用例** | 拿到真实 pass/fail + 单例耗时 |
-| **P2 定分片** | 用 P1 的耗时反推分片粒度和总时长 | 分片方案落成文件 |
-| **P3 夜间铺开** | `letta cron` 触发,agent 按 runbook 执行 | 早上有报告可读 |
-
-⚠️ 这四道门禁是**线性的,但 P1 的冒烟门禁会反复触发**:环境每变一次(装包/改 env/换镜像/
-换机器)就退回冒烟,重新拿到"1 个用例真 pass"才能继续。详见下一节。
-
-P1 是整套东西的价值所在:**没有真实耗时就无法定分片**,没跑过一次就不知道环境缺什么。
-P1 一定要人在场。
-
-### 环境每动一次,就要重新冒烟一次(2026-08-29 用户强反馈)
-
-原话:「在开始大规模测试前,一定要冒烟测试,任何环境改了都要先冒烟测试试试,
-比如这次任务跑 triton,比如重新装包等,省的浪费这么多 agent」。
-
-**门禁不是一次性的,是每次环境变更后都要重过。** 装包、换镜像、改 env、加挂载、
-换机器、换源码树 —— 任何一项动过,先跑那个最小用例,**看到真的 pass 再往下**。
-一次冒烟几十秒;跳过它,代价是一个 agent 十分钟起步,而且拿回来的信息量为零。
-
-**冒烟的通过标准是"至少 1 个用例真的 pass",不是"import 成功、没报错、装完了"。**
-2026-08-29 血证:xtriton 装好、`HAS_TRITON=True`、pip 报 `Successfully installed`,
-三个自证全绿,但 `test_multi_kernel.py` 依然 0 passed / 17 failed
-(`0 compatible backends for target (cuda)`)。**import 层自证会给出假绿。**
-
-反面教材(同一晚烧掉的 agent 派次):
-1. clone 失败(网络被 bridge 劫持)→ 2. clone 失败(缺凭据)→ 3. 跑测试全红(镜像无 Triton)
-→ 4. 装完 Triton 跑测试**还是**全红(后端为空)。
-第 3、4 次都是"改完环境直接铺大任务",各自烧一个 agent 才发现环境根本不通。
-若每次改完先冒烟一个用例,第 3、4 次能在几十秒内暴露,不必带着 16 文件 collect 和
-19 用例全量跑一起陪葬。
-
-推论:**把重环境验证和重数据采集拆成两个动作。** 先派一个廉价的冒烟(1 个用例,`-x -q`),
-过了再派采集基线和分母的大活。不要把"验证环境"和"取数据"塞进同一个 prompt ——
-环境不通时,后面那堆采集全是废动作。
-
-**P0.5 不许跳。** 它验的不是测试,而是**委托链路本身**:subagent 能不能起来、
-命令能不能落进容器、handback 格式能不能被填对。用已有容器 + 最简用例做,成本极低,
-2026-08-29 试点就是靠它抓出 `conda activate` 缺失(否则夜间 200+ 用例会整片
-`ModuleNotFoundError`)。派两个 agent 到隔离子目录、互不参照,顺带拿到交叉复核。
-
-## 执行模型:本机 subagent 下发,不依赖容器内 agent
-
-**容器里起不了 ducx/baidu-codex(2026-08-29 用户确认)。** 别再指望"把任务丢给容器内 agent
-自己干" —— 唯一可靠的执行主体是**本机的 Letta subagent**,它通过
-`ssh <节点>` + `docker exec <容器>` 把命令下发进去。容器只是被操作的对象,不是执行者。
-
-每个环节都委托给 subagent,不要我自己在主上下文里逐条 ssh:
-
-| 环节 | 委托内容 |
+| 已确立 | 值 |
 |---|---|
-| 连接 / 体检 | 建长连接、`df -h`、`nproc`、`docker ps`,回报选机结论 |
-| 建目录 | 定 `/ssd<N>`、`mkdir -p` 工作目录 |
-| 拉镜像 / 起容器 | `docker pull` + `docker run`(参数见 `machines.md`) |
-| 环境初始化 | 跑 BOS `restore.sh` 配网盘和 ssh key |
-| 冒烟测试 | 官方单例 + 目标最小用例,回报 pass/fail 和耗时 |
-| 夜间分片 | 每片一个 subagent,按 runbook 执行 |
+| 环境配方 | 见 [[skills/remote-exec-baidu/SKILL.md]],**逐字照抄** |
+| 单文件基线 | `test_multi_kernel.py` = 13 pass / 4 fail / 2 skip,**两次逐用例一致** |
+| 那 4 个 fail | 全是 `cpp_wrapper` 变体 → **真实缺口**,不是噪声 |
+| 2 进程并行 | **安全**(独立 cache 目录),零新增 fail |
+| 并行收益 | ❌ **未测出**(基准样本撞 timeout,数字作废) |
+| autotune 慢的根因 | ✅ 模拟器 event 返 0 → benchmark 迭代不收缩,见 `pitfalls.md` |
+| 规避开关收益 | ❌ **未测出**(只验了单用例) |
 
-委托纪律:prompt 里只写"cd 到哪、读哪个 runbook、负责什么、交付什么格式";
-登录链路、容器名、路径约定全部写在 runbook 文件里(见 `RUNBOOK-template.md`)。
-这样我的上下文不被登录细节占满,换机器只改 runbook。
+**下一步该做的**:量 `TORCHINDUCTOR_USE_EXPERIMENTAL_BENCHMARKER=0` 对整文件的实际收益
+(给 ≥3000s 预算,对比 2656s 基线)。这个数字决定所有分片预算,没它无法定 P2。
 
-**每个 subagent 跑完必须回传一份结构化 handback**(格式见 `HANDBACK-schema.md`):
-机器 ip / hostname / 盘与负载状态、选中的工作目录、容器名与 image tag、
-**进容器后逐条执行的命令原文 + rc**、测试结果计数、远端日志的路径+行数+md5。
-完整测试日志留在远端不回传,但元信息和摘要必须回来 —— **用户要逐条 review,这是硬要求。**
-没有 handback 的 agent 视为没干活,哪怕它口头说成功。
+---
 
-## P0→P3 四阶段(详见各参考文件)
+## 2. 判读口径(决定"红"意味着什么)
 
-| 阶段 | 目标 | 文件 |
+套件是**上游的**,目标是上游 CUDA 测试原样拿来能过。由此:
+
+- **按 CUDA 写法跑**(`device="cuda"` / `TestCommonCUDA`)是**验收口径本身**,不是权宜。
+  改测试去适配我们的后端 = 污染验收。
+- **skip 比 fail 危险。** fail 暴露缺口(有价值);大面积 skip 是假装通过。
+  必须带 `-rs` 摊出 skip 数和原因,**不许只报 pass 数**。
+- **分母诚实**:对上游全部单测的覆盖率(DENOM=4959),不是"我们挑得出来能跑的那些"。
+  缺失文件、collect 失败、整片 skip 都计入缺口。
+- **新增 fail 排报告最前**,不许被"整体成功"盖过去。
+
+---
+
+## 3. 三条铁律
+
+1. **先跑通一个,再铺开。** 没跑通过一次的测试不许进夜间批量 —— 半夜只会产出一堆
+   error,白烧一晚机器。
+2. **环境每动一次(装包/改 env/换镜像/换机器),退回冒烟重跑。** 拿到"1 个用例真 pass"才能继续。
+3. **跑通之前不许造机制。** 规模是一晚一晚试出来的(2→4→8),不为想象中的第 N 晚提前造调度器。
+   判据:为"还没发生的规模"设计 → 砍掉;当前这步实测撑不住 → 才可以加。
+
+---
+
+## 4. 执行模型
+
+**我只统筹,不下场。** 执行主体是 **ducx**(跑在本机,无状态、可并发):
+
+```bash
+ducx exec -m gpt-5.6-terra -c model_provider=oneapi -c model_reasoning_effort=high \
+  --skip-git-repo-check -s danger-full-access "$(cat PROMPT.md)" > ducx.log 2>&1 &
+```
+三个参数缺一不可(缺 provider → 死循环重连;缺 reasoning → config 默认 low)。
+Letta subagent 只在 ducx 不可用时兜底。**容器里起不了 ducx** —— 容器是被
+`ssh <节点>` + `docker exec` 操作的对象,不是执行者。
+
+**探路也是任务**(`df` / `docker ps` / 试写权限一并委托),我自己 ssh 去探等于污染上下文。
+
+**PROMPT.md 只写四样**:①目标 ②这一轮独有、猜不到的事实 ③禁碰清单 ④交付格式。
+连接方式、环境配方、写权限边界**不抄进 prompt** —— 给执行者文件路径让它自己读,
+这样改一次文件,所有后续执行者自动拿到最新版。步骤不用写,执行者有脑子。
+
+**没有 handback 视为没干活**,哪怕它口头说成功。格式见 `HANDBACK-schema.md`。
+
+---
+
+## 5. 四阶段与文件路由
+
+阶段之间是硬门禁,前一阶段没过不许进下一阶段。
+
+| 阶段 | 门禁 | 读哪个文件 |
 |---|---|---|
-| **P0 选机体检** | 找到能用的机器、确认磁盘与写权限 | `phase-p0-p1.md` |
-| **P1 打通单例**(人在场) | 建容器、装环境、**真跑出一个 pass**、取五个数 | `phase-p0-p1.md` |
-| **P2 定分片** | 用 P1 耗时定分片粒度,写成分片队列文件 | `scheduling.md` |
-| **P3 夜间铺开** | 多机小批 + 按回收速度续投,早上有报告 | `scheduling.md` |
+| **P0** 选机体检 | 有空间、有空闲算力、写权限已验 | `phase-p0-p1.md` |
+| **P1** 打通单例(**人在场**) | 真跑出 pass + 拿到单例耗时 | `phase-p0-p1.md` |
+| **P2** 定分片 | 分片方案落成文件 | `scheduling.md` |
+| **P3** 夜间铺开 | 早上有报告可读 | `scheduling.md` |
 
-## ⚠️ 先看阻塞清单
+P1 是价值所在:**没有真实耗时就无法定分片**。
 
-**安排任何无人值守铺开之前,先读 `blockers.md`。** 里面是实证踩出来的未决卡点
-(relay 指纹跨零点失效、relay 并发上限 vs 多机铺开、pass 数不稳定)。
-**没解决就不许铺开** —— 会整片断在连接上,或拿到不可信的数据。
-
-## 参考文件
-
-按需读,不要一次全读进上下文:
+其余文件按需读,**不要一次全读进上下文**:
 
 | 文件 | 什么时候读 |
 |---|---|
-| `blockers.md` | **铺开前必读**;未决卡点清单 |
-| `boundaries.md` | 派任何执行者之前;写权限硬边界(**也直接给执行者读**) |
-| `phase-p0-p1.md` | 做 P0/P1 时;建容器、环境初始化、冒烟、取分母 |
-| `scheduling.md` | 做 P2/P3 时;分片、调度、窗口与收工、并发、审计、**夜间无人值守时我能自己拍什么 / 必须等白天什么** |
-| `pitfalls.md` | 踩坑时;常见坑与规避 |
-| `machines.md` | 需要机器/镜像/容器参数时(**也直接给执行者读**) |
-| `RUNBOOK-template.md` | 给执行者的自包含手册模板 |
-| `HANDBACK-schema.md` | 定义执行者必须回传的结构化格式 |
-| `campaigns/` | 每次战役:`runs/<时间戳>-<机器>-<任务>/` 一次派发一个新目录(不复用),外加 INDEX.md |
-
-远端连接方式、conda 自证、CUDA 口径 → 另一个技能 `remote-exec-baidu/SKILL.md`
-(**那份也是给无状态执行者的简报,派活时把路径给它,不要抄进 prompt**)。
+| `blockers.md` | **铺开前必读**,未决卡点;没解决不许铺开 |
+| `boundaries.md` | 派执行者前;写权限硬边界(**也直接给执行者读**) |
+| `machines.md` | 需要机器/镜像/容器具体参数时 |
+| `pitfalls.md` | 结果反常时;已取证的坑与根因 |
+| `HANDBACK-schema.md` | 定交付格式时 |
+| `RUNBOOK-template.md` | 需要给执行者一份完整手册时 |
