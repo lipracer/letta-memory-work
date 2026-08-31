@@ -6,9 +6,11 @@
 #
 # 用法(在本机):
 #   dispatch.sh <节点> <容器> <测试文件> [时限秒=3600] [模型=gpt-5.6-terra]
-# 例:
-#   dispatch.sh devbox chenlonglong01_m300_py312_torch212 \
-#       xTorch/test/inductor/test_multi_kernel.py 3600
+# 例(占位,别照抄具体值):
+#   dispatch.sh <节点别名> <容器名> <测试文件相对路径> 3600
+#
+# 战役目录用 env 覆盖,不写死在脚本里:
+#   CAMPAIGN=<战役名> WORK_ROOT=<工作目录> dispatch.sh ...
 #
 # 产物:$RUNS_ROOT/<tag>/{PROMPT.md,ducx.log,handback.md}
 # 派完立刻返回;用 Monitor 盯 handback.md 出现,不要轮询。
@@ -20,7 +22,12 @@ TESTFILE="${3:?need testfile}"
 BUDGET="${4:-3600}"
 MODEL="${5:-gpt-5.6-terra}"
 
-RUNS_ROOT="${RUNS_ROOT:-$HOME/workspace/zhixing-work/campaigns/multinode-20260829/runs}"
+WORK_ROOT="${WORK_ROOT:-$HOME/workspace/zhixing-work}"
+# 战役名是不变的锚(日期只出现在 run 目录那层)。给 RUNS_ROOT 就不必给 CAMPAIGN。
+if [[ -z "${RUNS_ROOT:-}" ]]; then
+  CAMPAIGN="${CAMPAIGN:?need CAMPAIGN=<战役名> or RUNS_ROOT=<绝对路径>}"
+  RUNS_ROOT="$WORK_ROOT/campaigns/$CAMPAIGN/runs"
+fi
 SKILL_DIR="${SKILL_DIR:-$MEMORY_DIR/skills}"
 
 TAG="$(date +%Y%m%d-%H%M)-$NODE-$(basename "$TESTFILE" .py)"

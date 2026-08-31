@@ -139,6 +139,12 @@ python -m pytest <选中的测试文件> -v --durations=0 2>&1 | tee run.log
 `--collect-only` 与 AST 静态计数对不上时,差异本身就是信号(collect error 或条件 skip),
 必须查清再进 P2,不许取个数字了事。
 
+⚠️ **AST 数与 collect 数是两个口径,差的是数量级,不是误差。** AST 只数源码里写了多少
+`test_*` 方法,`instantiate_device_type_tests` / `@parametrize` / `copy_tests` /
+`make_test_cls_with_patches` 的**展开倍数不计入**;collect 一展开就乘设备数 × dtype 数。
+**两栏都要留**(AST 数 / collect 数),差值本身就是"展开倍数"这个信息。
+分片预算只能用 collect 数。详见 [[reference/m300/task_docs.md]]。
+
 耗时**必须在实际要用的模式下测**(模拟器 vs 真卡差一个量级以上),不能外推。
 算平均耗时时**扣掉每进程约 2-4s 的设备初始化固定开销**(2026-08-29 实测:
 最简 add 用例里 device 首次初始化占 2.33~3.78s,CPU 用例仅 0.01s),
