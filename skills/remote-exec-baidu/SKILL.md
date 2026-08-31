@@ -15,6 +15,43 @@ ssh devbox '<远端命令>'
 ```
 `devbox` = `chenlonglong01@10.206.192.139`(wxtky02-p800-8nic-vd-node41),nproc 208。
 
+### ⚠️ 连接复用:配了不等于生效(2026-08-31 发现,尚未修好)
+
+**每条 `ssh devbox '<cmd>'` 都是一次完整的 relay 认证 + 建连。** 一个任务下发几十条命令
+就是几十次建连 —— 慢,而且**直接撞 relay 4 路并发上限**(见
+[[skills/overnight-test-campaign/blockers.md]] 第 2 条)。所以长连接复用不是优化,
+是**能不能多机并行的前提**。
+
+现状:`~/.ssh/config` 里 `ControlMaster auto` / `ControlPersist 8h` **配了,但没生效** ——
+实测 23 条命令下发后,`~/.ssh/master-*` 和 `~/.ssh/sessions/master-*` **一个 socket 都没有**。
+
+已知的配置缺陷(可能是原因之一,未定性):**ControlPath 分裂成两套且指向不同目录**,
+而 `devbox`(HostName `10.206.192.139`)**同时命中两条规则**:
+```
+Host devbox           → ~/.ssh/master-%r@%h:%p        # ssh 取先出现的这条
+Host 10.206.19*.*     → ~/.ssh/sessions/master-...    # 另一套路径
+```
+两处不一致时,同一台机可能因匹配顺序落在不同 socket 路径上,互相找不到对方的 master。
+
+**动手前先验证,不要照着推测改。** 诊断顺序:
+```bash
+# 1. 看第一条命令是否建起 master(-v 里应出现 "auto-mux: Trying existing master" 或建 master)
+ssh -v devbox true 2>&1 | grep -iE "mux|master|control"
+# 2. 建连后 socket 是否落盘
+ls -la ~/.ssh/master-* ~/.ssh/sessions/master-* 2>/dev/null
+# 3. 第二条命令是否复用(应显著更快,且 -v 报 "Trying existing master")
+time ssh devbox true; time ssh devbox true
+# 4. 显式查/关 master
+ssh -O check devbox ; ssh -O exit devbox
+```
+**重点怀疑对象**:`ProxyCommand relay-cli proxy` 是一次性进程,
+若 master 无法 daemonize 或 relay 侧不容忍复用,则每次都会重连 —— 这需要实测才能定性。
+
+修好后必须回来把结论写进这里:socket 路径统一到哪、master 是否真的复用、
+一次认证能撑多久、以及**并行上限是否随之提高**。
+
+⚠️ **有任务在飞时不要改 `~/.ssh/config`** —— 会打断它的连接。等回收后再动。
+
 **其他节点没有别名**,用完整形式(`~/.ssh/config` 里的 relay proxy 写法展开):
 ```bash
 ssh -o ConnectTimeout=45 -o StrictHostKeyChecking=no \
