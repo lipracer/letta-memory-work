@@ -176,7 +176,18 @@ description: My role boundary: I orchestrate, executors do the work. What belong
 至少 3 次要求启动真任务、2 次纠正 target bridge 已修、2 次要求固化成功环境、2 次要求自主续跑。
 用户事实上一直在充当状态机。这是失败标准：**流程需要用户逐轮提示，就不叫自主编排。**
 
-后续方向：在本机编排层实现持久化状态图（LangGraph 是当前合理候选，而非必须迷信的品牌）；
-状态至少包含 smoke→freeze_env→run_batch→classify→retry/recover→next_batch→report，人工节点只留
-真正未知的产品判断。执行状态落盘，恢复后自动续跑；不再靠用户或我的上下文推进。
+后续方向：在本机编排层实现持久化状态图；状态至少包含
+smoke→freeze_env→run_batch→classify→retry/recover→next_batch→report，人工节点只留真正未知的
+产品判断。执行状态落盘，恢复后自动续跑；不再靠用户或我的上下文推进。
+
+**选型结论（2026-09-01，先记录、不阻塞当晚测试）**：第一候选是轻量的
+`transitions`（pytransitions）+ Python 标准库 `sqlite3`。`transitions` 约束合法状态转换；SQLite
+保存 campaign/shard/attempt/transition log/outbox/artifact/human task。LangGraph + SQLite
+checkpointer 是第二候选；Prefect/Temporal/DBOS 对当前单机低并发战役偏重。完整分析在工作目录
+`/Users/chenlonglong01/workspace/zhixing-work/m300-night-campaign-state-machine-analysis.md`。
+
+**节奏边界**：框架设计与实现放到白天，绝不在夜间测试窗口临时改控制面，导致“为了以后能自主跑，
+今晚反而跑不起来”。当晚继续使用已验证的 init/runner/静态分配；状态图改造只记录技术债，不能成为
+暂停真实测试的理由。直到状态图落地前，我仍负责在一波结束后立即续派下一波，不能把等待用户提示
+当作临时方案。
 
