@@ -1,206 +1,53 @@
 ---
 name: overnight-test-campaign
-description: This skill should be used when the user wants to run a large batch of tests overnight (半夜/夜间跑) on remote GPU/XPU machines by delegating to agents — including environment and disk precheck, pulling images and building containers, sharding test suites that have no unified runner, and collecting an auditable report by morning. First campaign is the M300 PyTorch Autotuning (torch.compile) suite. Load this before scheduling any unattended remote test run.
-version: 0.2.0
+description: Use for auditable overnight PyTorch M300/XPU test campaigns with HTTP workers, strict environment gates, sharding, and handback collection.
 ---
 
-# 夜间远端测试战役
+# Overnight Test Campaign
 
-**做什么**:让上游 PyTorch 单元测试在 M300(编译层面兼容 CUDA)上跑起来,
-批量、无人值守、早上有一份可复现的报告。产出是**一张持续演进的兼容性缺口清单**
-([[reference/m300/cuda_compat_gaps.md]]),不是一次性绿灯。
+## Current State
 
-**核心矛盾**:测试套件没有统一 runner,机器是共享的,而半夜没人在场。
-所以一切必须先在有人看着时打通一遍。
+| Scope | Evidence | Boundary |
+|---|---|---|
+| node41 `10.206.192.139:8320` | Host HTTP gateway, controlled `docker exec` into existing `chenlonglong01_m300_py312_torch212`; `env_check` passed, `test_best_config.py` 1 passed, restart persistence and admin `pending_review` verified | One verified path, not a fleet guarantee |
+| node41 `:8111` | Independent container direct HTTP verified | Example only |
+| Other nodes/ports | Unverified | Must pass gates independently |
+| KU ready | Image/documentation readiness only | Does not mean worker ready |
 
----
+## Next-Step Gates
 
-## 1. 先读这个:当前进展
+Use one parameterized `/Users/chenlonglong01/workspace/zhixing-work/init-http-worker.sh`; per machine inject parameters, never generate a new script.
 
-**不知道该干什么时,看这一节,不要从头读全部文件。**
+1. Check Docker/container ownership, writable directory, and port. Refuse occupied ports; bridge is the default network. Host networking is an explicit exception only when the real XPU/egress contract requires it.
+2. Start or attach an HTTP worker. Existing non-owned containers are only inspected and used through a safe exec entrypoint; never stop, delete, replace, or pretend the host is the execution container.
+3. Run server-defined `env_check`.
+4. Run the reviewed, evidence-backed minimal Triton/Inductor pytest node-id. A file-level success is not a node-id; when evidence lacks a node-id, require `--smoke-selector` and stop by default.
+5. Check `/health`, then register the worker. A failed gate is not ready.
 
-**当前卡在第 3.1 节的第②步:冒烟已跑通,环境初始化脚本还没固化。**
+HTTP direct connection is preferred. SSH may do one bootstrap/start action only; do not default to a tunnel. Port reachability is a site fact to verify, not a rule inferred from another node.
 
-| 已确立 | 值 |
+## Non-Negotiable Rules
+
+- Host writes stay inside the caller-owned work directory. Never clean shared disks, modify routes/firewalls, or install packages.
+- Every worker has an ownership marker. Only a matching marker may authorize later lifecycle operations.
+- Tokens are generated at runtime, stored mode 0600, and redacted from handback.
+- The server owns Python, conda, cwd, source, bridge, environment, cache, log, and result paths. Ordinary `POST /jobs` accepts only `job_type`, `target`, `selectors`, `timeout_seconds`, and `request_id`; `argv`, `env`, `cwd`, and `python` are rejected.
+- Verified contract: conda `python312_torch212`; Python `/root/miniconda/envs/python312_torch212/bin/python`; cwd `/workspace/m0-denominator-final`; source `/workspace/torchcompile/pytorch`; `TC_PLATFORM=xpu`; `TRITON_ENABLE_XCN_BACKEND=true`; `TORCHINDUCTOR_COMPILE_THREADS=1`; LD append `/usr/local/xcuda/targets/x86_64-linux/lib/`; bridge PYTHONPATH `/workspace/m0-denominator-final/triage-triton`; CUDA spelling `cuda:0`; per-job cache under `http-cache/<job_id>`.
+- `POST /admin/commands` accepts arbitrary shell text only as an auditable `pending_review` record. It never executes. A separate admin token, digest match, explicit approve, audit record, and expiry are required for the designed approve endpoint; approval still records `approved_not_executed`. A worker token cannot approve.
+- Make `GET /health`, `GET /jobs/<id>`, `GET /admin/commands/<id>`, log/handback paths, persisted job metadata, and dynamic-port registration explicit in reports.
+- Ordinary jobs are fixed test operations. `job_init`/admin shell is review-only control plane, never a shortcut around environment gates.
+
+## Routing
+
+| Need | Read |
 |---|---|
-| 环境配方 | 见 [[skills/remote-exec-baidu/SKILL.md]],**逐字照抄** |
-| **分母** | ✅ **13574**(62 个 inductor 文件 collect,md5 `6952f984...`) |
-| 分母修法 | **SciPy 1.18.0 → 1.13.1 降级**(NumPy 1.26.4 不动);torch/Triton 未连带改动 |
-| conda 路径 | `/root/miniconda/etc/profile.d/conda.sh`,activate 后 python 应在 `/root/miniconda/envs/python312_torch212/bin/python` |
-| 参数化收集脚本 | 容器内 `/workspace/m0-denominator-final/bin/collect.sh`(**孤本,待固化进 skill**) |
-| **execute 冒烟** | ✅ `test_best_config.py`: **1 passed / 0 failed / 0 skipped / 0 error**, pytest rc=0 |
-| 冒烟耗时 | 23.98s;日志含 `triton_poi_fused_add_cos_sin_0` kernel launch |
-| 环境初始化脚本 | ❌ **未固化** —— 第②步门禁,没它不许铺开 |
-| 单文件基线 | `test_multi_kernel.py` = 13 pass / 4 fail / 2 skip,**两次逐用例一致** |
-| 那 4 个 fail | 全是 `cpp_wrapper` 变体 → **真实缺口**,不是噪声 |
-| 2 进程并行 | **安全**(独立 cache 目录),零新增 fail |
-| 并行收益 | ❌ **未测出**(基准样本撞 timeout,数字作废) |
-| autotune 慢的根因 | ✅ 模拟器 event 返 0 → benchmark 迭代不收缩,见 `pitfalls.md` |
-| 规避开关收益 | ❌ **未测出**(只验了单用例) |
+| Bootstrap and protocol | `init-http-worker.sh`, `remote-http-workspace/server.py`, `remote-http-workspace/runner.py` |
+| P0/P1 gates and smoke | `phase-p0-p1.md` |
+| HTTP channels and direct-connect evidence | `channels.md` |
+| Ownership and write boundaries | `boundaries.md` |
+| Sharding only after worker readiness | `sharding.md` |
+| Failure taxonomy and blockers | `blockers.md`, `pitfalls.md` |
+| Machine-specific examples | `machines.md` |
+| Handback schema | `HANDBACK-schema.md` |
 
-### 当前冒烟基线（已实证，后续可被更优实现替换）
-
-在 node41 的容器 `chenlonglong01_m300_py312_torch212`、conda 环境
-`python312_torch212` 中，以下是当前**已跑通的 execute 基线**：
-
-```text
-TC_PLATFORM=xpu
-TRITON_ENABLE_XCN_BACKEND=true
-TORCHINDUCTOR_COMPILE_THREADS=1
-LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/xcuda/targets/x86_64-linux/lib/"
-PYTHONPATH=/workspace/m0-denominator-final/triage-triton
-```
-
-`PYTHONPATH` 中的 `sitecustomize.py` 是现有启动期 bridge：它在 `TC_PLATFORM=xpu` 时
-包装 `triton.compile`，把 Inductor 传入的 `GPUTarget(backend="cuda")` 改写为活动目标
-`GPUTarget(backend="houyi", arch="xpu5", warp_size=32)`。这不是 Triton 原生把 `cuda`
-映射到 `xpu`，也不是测试修改；是当前 CUDA 兼容路径的启动条件。
-
-**实证结果**（2026-09-01，报告：
-`/Users/chenlonglong01/workspace/zhixing-work/runs/20260831-1646-m0-denominator/triage-triton.md`）：
-
-- 最小 `torch.compile` CUDA add：✅ 编译并运行，结果 `[4.0, 6.0]`，日志含
-  `triton_poi_fused_add_0`。
-- `test/inductor/test_best_config.py`：✅ **1 passed / 0 failed / 0 skipped / 0 error**，
-  pytest rc=0，耗时 23.98s。
-- 运行时自证：`backends=['triton_shared', 'xcn']`、活动 backend=`HOUYIBackend`、
-  target=`houyi/xpu5`。
-
-**防回归要求**：正式 runner、冒烟和批量任务必须共用这组环境契约；启动前必须自证
-`xcn` 已注册、active target 是 `houyi/xpu5`、bridge 已加载，缺任一项就非零退出，
-不许把未注入 bridge 的失败误判为 target 修复失效。
-
-**未来替换条件**：如果后续 xTorch/Triton 真正支持 `cuda` target，能够在**不依赖上述
-环境变量和 `sitecustomize.py` monkeypatch**的情况下完成同一个 add 和同一个测试，
-再更新本节基线；旧基线保留为历史证据，不得删除。
-
-**下一步该做的**:量 `TORCHINDUCTOR_USE_EXPERIMENTAL_BENCHMARKER=0` 对整文件的实际收益
-(给 ≥3000s 预算,对比 2656s 基线)。这个数字决定所有分片预算,没它无法定 P2。
-
----
-
-## 2. 判读口径(决定"红"意味着什么)
-
-套件是**上游的**,目标是上游 CUDA 测试原样拿来能过。由此:
-
-- **按 CUDA 写法跑**(`device="cuda"` / `TestCommonCUDA`)是**验收口径本身**,不是权宜。
-  改测试去适配我们的后端 = 污染验收。
-- **skip 比 fail 危险。** fail 暴露缺口(有价值);大面积 skip 是假装通过。
-  必须带 `-rs` 摊出 skip 数和原因,**不许只报 pass 数**。
-  skip 还必须**分三类**(`skip_upstream` / `skip_ours` / `skip_gating_bug`,定义见
-  [[reference/m300/precision_criteria.md]]):**skip 总数下降不一定是好事,稳定也不一定安全**,
-  只有按类看才有意义。
-- **分母诚实**:覆盖率对的是**上游 torch.compile / inductor 全量**,
-  不是"我们挑得出来能跑的那些"。缺失文件、collect 失败、整片 skip 都计入缺口。
-  ⚠️ **范围不是整个 PyTorch** —— torch 其他模块是团队的活；别拿团队的分母给自己记分。
-  ✅ 分母已取证 = **13574**(62 文件)。❌ `4959` / `124/126` / `74/77` **无出处,永久作废**。
-  ⚠️ 分母**绑定环境**:换 Triton/可选依赖/收集门控就得重取(同批 16 文件装 Triton 前后 1997→2994)。
-  ⚠️ **AST 数不能替代 collect 数**(AST 按 ClassDef 硬数,会算进未继承测试基类的类)。
-- **新增 fail 排报告最前**,不许被"整体成功"盖过去。
-
----
-
-## 3. 三条铁律
-
-1. **先跑通一个,再铺开。** 没跑通过一次的测试不许进夜间批量 —— 半夜只会产出一堆
-   error,白烧一晚机器。
-2. **环境每动一次(装包/改 env/换镜像/换机器),退回冒烟重跑。** 拿到"1 个用例真 pass"才能继续。
-3. **跑通之前不许造机制。** 规模是一晚一晚试出来的(2→4→8),不为想象中的第 N 晚提前造调度器。
-   判据:为"还没发生的规模"设计 → 砍掉;当前这步实测撑不住 → 才可以加。
-
-### 3.1 强制三步序(2026-08-31 用户定,不许跳步、不许换序)
-
-**冒烟 → 固化环境初始化脚本 → 才派真任务。**
-
-| 步 | 做什么 | 放行条件 |
-|---|---|---|
-| **① 冒烟** | 单文件真 `execute`(不是 collect),拿 pass/fail/skip/error 四个数 | **至少 1 个用例真 pass**。全 skip = 红灯,即使 rc=0 |
-| **② 固化** | 把冒烟里跑通的那套环境写成 **docker 环境初始化脚本** | 脚本在**干净容器**上跑一遍,冒烟结果可复现 |
-| **③ 铺开** | 才允许派真正的批量任务 | 上面两步都留了证 |
-
-**②不是文档工作,是放行门禁。** 冒烟能过往往靠执行者当场手动补的动作
-(activate 路径、装/降包、env 变量、cache 目录隔离)。这些动作**只活在它的上下文里**,
-它一退出就没了 —— 下一个执行者会在同一个坑上重栽。所以冒烟一通过,
-**立刻把"从镜像到能跑测试"的全部步骤固化成一个可重复执行的脚本**,再谈铺开。
-
-脚本的硬要求(否则等于没固化):
-- **幂等**:重复执行不炸、不重复装包;已就位就跳过
-- **自证**:结尾必须打印 `python` 路径、torch/numpy/scipy/triton 版本、
-  `torch.cuda.is_available()`,并且**校验值符合预期,不符就非零退出**
-- **参数化**:容器名/env 名/工作目录是参数,不写死(**用户名一律 `$(id -un)`**)
-- **落在版本控制里**:`skills/overnight-test-campaign/bin/` 下,不是只丢在某台机的 `/workspace`
-  (容器会被重建,`/workspace` 里的孤本等于没有)
-- **只做环境**:不许在初始化脚本里跑测试;跑什么是调用方的参数
-
-判据:**新执行者只拿到"镜像名 + 这个脚本"就能到达冒烟通过的状态**,不需要读任何散文。
-
----
-
-## 4. 执行模型
-
-**我只统筹,不下场。** 执行主体是 **ducx**(跑在本机,无状态、可并发):
-
-```bash
-ducx exec -m gpt-5.6-terra -c model_provider=oneapi -c model_reasoning_effort=high \
-  --skip-git-repo-check -s danger-full-access "$(cat PROMPT.md)" > ducx.log 2>&1 &
-```
-三个参数缺一不可(缺 provider → 死循环重连;缺 reasoning → config 默认 low)。
-Letta subagent 只在 ducx 不可用时兜底。**容器里起不了 ducx** —— 容器是被
-`ssh <节点>` + `docker exec` 操作的对象,不是执行者。
-
-**探路也是任务**(`df` / `docker ps` / 试写权限一并委托),我自己 ssh 去探等于污染上下文。
-
-**派一个分片用脚本，不手写 prompt**（`bin/` 下三个）：
-
-| 脚本 | 干什么 | 为何是代码而不是文档 |
-|---|---|---|
-| `bin/dispatch.sh <节点> <容器> <测试文件> [时限]` | 建 run 目录、模板生成 PROMPT、带齐三个 ducx 参数派发 | 手写 4KB prompt 就是“每次 prompt 一大堆” |
-| `bin/runner.sh <测试文件> [时限]`（容器内） | conda activate + 12 项 env + 自证 + 跑 + 落 meta.env | 漏 `PYTHONPATH=.` → 假红；漏 benchmarker 开关 → 慢两个量级 |
-| `bin/classify.py <meta.env>...` | meta → verdict + 处置 | 同一个 rc=124 三种含义，分错就污染缺口清单 |
-
-`classify.py` 的判定（已用四个场景验过）：
-`rc=3` → `env_broken`（不算 fail，原样重排）；
-`rc=124` 且用满预算 → `budget_short`（加时限）；
-`rc=124` 但远未用满 → `hung`（立案为 blocker）；
-`rc=0/1` 且有汇总行 → `ok`（rc=1 有 fail 是有价值产出，不是故障）。
-
-**改得起的地方**：环境契约变了改 `runner.sh`（换镜像才需要）；
-新增一个同类任务只给参数。**若发现自己又在手写散文派派任务，就是退步了。**
-
-**不是每个任务一个脚本，是每个环境契约一个脚本。** 三层分工见
-[[system/orchestration.md]]：环境契约（容器内 bash）/ 跑什么（参数）/ 派发回收（我这侧）。
-所以脚本里**不许出现某一轮才成立的值** —— 战役名用 `CAMPAIGN=` env 传，
-测试文件是必需参数，cache 目录按 PID 隔离。写死具体测试文件名和写死用户名是同一个毛病。
-
-**PROMPT 模板只写四样**:①目标 ②这一轮独有、猜不到的事实 ③禁碰清单 ④交付格式。
-连接方式、环境配方、写权限边界**不抄进 prompt** —— 给执行者文件路径让它自己读,
-这样改一次文件,所有后续执行者自动拿到最新版。步骤不用写,执行者有脑子。
-
-**没有 handback 视为没干活**,哪怕它口头说成功。格式见 `HANDBACK-schema.md`。
-
----
-
-## 5. 四阶段与文件路由
-
-阶段之间是硬门禁,前一阶段没过不许进下一阶段。
-
-| 阶段 | 门禁 | 读哪个文件 |
-|---|---|---|
-| **P0** 选机体检 | 有空间、有空闲算力、写权限已验 | `phase-p0-p1.md` |
-| **P1** 打通单例(**人在场**) | 真跑出 pass + 拿到单例耗时 | `phase-p0-p1.md` |
-| **P2** 定分片 | 分片方案落成文件 | `sharding.md` |
-| **P3** 夜间铺开 | 早上有报告可读 | `night-run.md` |
-
-P1 是价值所在:**没有真实耗时就无法定分片**。
-
-其余文件按需读,**不要一次全读进上下文**:
-
-| 文件 | 什么时候读 |
-|---|---|
-| `blockers.md` | **铺开前必读**,未决卡点;没解决不许铺开 |
-| `boundaries.md` | 派执行者前;写权限硬边界(**也直接给执行者读**) |
-| `machines.md` | 需要机器/镜像/容器具体参数时 |
-| `channels.md` | 要和跑着的任务交互,或怀疑撞连接上限时 |
-| `pitfalls.md` | 结果反常时;已取证的坑与根因 |
-| `HANDBACK-schema.md` | 定交付格式时 |
-| `RUNBOOK-template.md` | 需要给执行者一份完整手册时 |
+Keep verified facts separate from hypotheses. Record node, port, container, selector, status, rc, elapsed time, persisted paths, and failure class. Never generalize node41 success to another machine without its own evidence.

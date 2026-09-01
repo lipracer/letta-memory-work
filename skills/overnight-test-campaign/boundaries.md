@@ -71,3 +71,11 @@ WORKROOT=/ssd${SSD_N}/${RUSER}     # SSD_N 由 P0 体检选出
 - **有人在跑 benchmark(卡被占 或 load 已高)→ 该机降级或跳过**,不要挤进去。
 - 并行度按**空闲**核数算,并**留一部分给机器主人**;宁可少开两个进程。
 - handback 必须报出**实际并行度 + 当时的 load**,否则事后分不清"耗时异常"是我们挤爆的还是环境慢。
+## HTTP bootstrap addition
+
+`init-http-worker.sh` writes only its caller-owned `--host-workdir` and records
+`.http-worker-owner`. It may create a container only when it can prove the
+resource is new; an existing container without a matching ownership marker is
+never stopped, deleted, replaced, or modified. The host gateway plus a
+controlled `docker exec` is a valid node41 pattern; the host process is not the
+test execution落点.

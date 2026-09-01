@@ -152,4 +152,20 @@ python -m pytest <选中的测试文件> -v --durations=0 2>&1 | tee run.log
 
 把这五项写进 `campaigns/<名字>/P1-baseline.md`。
 
+## HTTP Worker Gate (current)
 
+The sole bootstrap is `/Users/chenlonglong01/workspace/zhixing-work/init-http-worker.sh`.
+Inject `--node`, `--host`, `--image`, `--container`, `--host-workdir`,
+`--container-workdir`, `--source-root`, `--bridge-dir`, `--host-port`, and
+`--campaign` per machine. Do not generate a per-machine script.
+
+Order is strict: Docker/owned directory/port -> HTTP worker -> `env_check` ->
+reviewed minimal Triton/Inductor pytest node-id -> `/health` -> worker pool.
+The file-level node41 result (`test_best_config.py`, 1 passed) is evidence for
+the file, not an individual node-id; absent a recorded node-id, the bootstrap
+must reject the default and require an explicit `--smoke-selector`.
+
+node41 `:8320` (host gateway to existing real container) and `:8111`
+(independent direct container) are verified examples only. Other nodes need
+their own env_check, smoke, persistence, and direct-connect evidence. KU ready
+is not worker ready.

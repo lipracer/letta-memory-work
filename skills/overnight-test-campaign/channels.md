@@ -89,4 +89,17 @@ relay 只算一条连接 —— 所以**扩产能优先往机内加**(见上面�
 **relay 指纹认证是 per-host 的,N 台就是 N 次首连认证,省不掉**;
 长连接省的是同一台机器上后续命令的重连(实测 12s+ → ~0.9s)。
 夜间任务要注意 8h 窗口:凌晨建的连接白天可能已过期。
+## HTTP worker protocol (current)
 
+Prefer direct HTTP; SSH is one-time bootstrap/start only and tunnels are not
+the default. `POST /jobs` accepts only `job_type`, `target`, `selectors`,
+`timeout_seconds`, `request_id`; client `argv`, `env`, `cwd`, and `python` are
+rejected. Use `GET /health`, `GET /jobs/<id>`, and persisted job log/result
+paths for handback. Register the dynamically selected port only after all
+gates pass.
+
+`POST /admin/commands` accepts arbitrary shell text but creates only
+`pending_review`; it never executes. `GET /admin/commands/<id>` and the
+subsequent approve design require a separate admin token, exact command digest,
+explicit approval, audit, and expiry. Approval remains
+`approved_not_executed`; a worker token cannot approve.

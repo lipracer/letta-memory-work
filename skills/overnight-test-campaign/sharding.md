@@ -131,4 +131,11 @@ agent 遇到问题 → 自己能判断的,自己处理并记录
 跑不完是常态,没跑完的下一晚继续,见上面「静态预分配 + 逐晚加倍」。
 **不许为了"一晚跑完"去砍测试范围**,也不许靠"拖到白天"或"提前到 23:00 前"补。
 周末窗口大得多,大批量优先排周末。
+## Pool admission
 
+Workers enter the pool only after the unified HTTP bootstrap completes Docker,
+directory, and dynamic-port checks, `env_check`, the evidence-backed quick
+Triton/Inductor smoke, and final health check. A node41 success must not be
+copied to another machine. Persist status, port, job IDs, log/result paths, and
+failure class before assigning shards. `job_init` and admin shell requests are
+review-only control-plane records, never ordinary shard jobs.
